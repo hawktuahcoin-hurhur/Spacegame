@@ -37,7 +37,15 @@ export interface Controls {
   boost: boolean;
   zeroThrottle: boolean;
   toggleSupercruise: boolean;
+  /**
+   * Mouse-aim steering: the orientation the pilot is looking along (system axes).
+   * When set, the ship turns itself to match it and mouse deltas are ignored.
+   */
+  aim?: THREE.Quaternion | null;
 }
+
+/** How hard the ship chases the aim orientation (1/s); rates are still capped per axis. */
+const AIM_GAIN = 3.2;
 
 export interface FlightEnv {
   /** Distance to the nearest surface (for the supercruise cap). */
@@ -156,7 +164,28 @@ export class ShipController {
     if (c.zeroThrottle) this.throttle = 0;
     this.throttle = THREE.MathUtils.clamp(this.throttle + c.throttleAxis * dt * 0.7, 0, 1);
 
-    // --- Steering: mouse drives a virtual stick that eases back to centre.
+    const turn = this.mode === 'supercruise' ? SUPERCRUISE.turnFactor : 1;
+    if (c.aim) {
+      // --- Mouse aim: rotate toward where the pilot is looking.
+      this.stick.multiplyScalar(Math.exp(-dt * 8));
+      const err = _q.copy(this.quaternion).invert().multiply(c.aim);
+      if (err.w < 0) err.set(-err.x, -err.y, -err.z, -err.w);
+      const angle = 2 * Math.acos(Math.min(1, err.w));
+      const sinHalf = Math.sqrt(Math.max(1 - err.w * err.w, 0));
+      const k = sinHalf > 1e-6 ? (angle / sinHalf) * AIM_GAIN : 0;
+      // Error as a local rotation vector (x pitch, y yaw, z roll), turned into capped rates.
+      const target = _lat.set(
+        THREE.MathUtils.clamp(err.x * k, -s.pitchRate * turn, s.pitchRate * turn),
+        THREE.MathUtils.clamp(err.y * k, -s.yawRate * turn, s.yawRate * turn),
+        THREE.MathUtils.clamp(err.z * k, -s.rollRate, s.rollRate),
+      );
+      this.angular.lerp(target, 1 - Math.exp(-dt * 9));
+      _q.setFromEuler(_e.set(this.angular.x * dt, this.angular.y * dt, this.angular.z * dt, 'XYZ'));
+      this.quaternion.multiply(_q).normalize();
+      return this.translate(dt, c, env, out);
+    }
+
+    // --- Classic steering: mouse drives a virtual stick that eases back to centre.
     const mouseMag = Math.abs(c.mouseDX) + Math.abs(c.mouseDY);
     if (this.autoAlign && mouseMag > 4) {
       this.autoAlign = false;
@@ -175,12 +204,16 @@ export class ShipController {
     }
 
     const dead = (v: number) => (Math.abs(v) < 0.04 ? 0 : (v - Math.sign(v) * 0.04) / 0.96);
-    const turn = this.mode === 'supercruise' ? SUPERCRUISE.turnFactor : 1;
     const target = _lat.set(-dead(this.stick.y) * s.pitchRate * turn, -dead(this.stick.x) * s.yawRate * turn, c.roll * s.rollRate);
     this.angular.lerp(target, 1 - Math.exp(-dt * 6));
     _q.setFromEuler(_e.set(this.angular.x * dt, this.angular.y * dt, this.angular.z * dt, 'XYZ'));
     this.quaternion.multiply(_q).normalize();
+    return this.translate(dt, c, env, out);
+  }
 
+  /** Thrust, supercruise speed and flight assist; returns the frame-relative displacement. */
+  private translate(dt: number, c: Controls, env: FlightEnv, out: THREE.Vector3): THREE.Vector3 {
+    const s = SHIP_STATS;
     const forward = this.forward.clone();
     _right.set(1, 0, 0).applyQuaternion(this.quaternion);
     _up.set(0, 1, 0).applyQuaternion(this.quaternion);

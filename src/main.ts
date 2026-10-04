@@ -55,6 +55,8 @@ const menu = new Menu(game.storage, {
   quality: () => game.quality,
   setMuted: (m) => game.audio.setMuted(m),
   muted: () => game.audio.muted,
+  settings: () => game.settings,
+  updateSettings: (patch) => game.updateSettings(patch),
   quitToTitle: async () => {
     await game.saveTo('auto');
     location.href = location.pathname;

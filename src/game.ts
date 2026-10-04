@@ -17,6 +17,7 @@ import { SaveStorage, type SlotId } from './save/storage';
 import { type Controls, type FlightEnv, ShipController, SHIP_STATS } from './ships/flight';
 import { createShip, type ShipVisual } from './ships/shipMesh';
 import { SimClient } from './sim/simClient';
+import { type Settings, loadSettings, saveSettings } from './settings';
 import { formatDistance, formatDuration, formatSpeed } from './ui/format';
 import { GalaxyMap, type GalaxyMapState } from './ui/galaxyMap';
 import { Hud, type HudState, type MarkerData } from './ui/hud';
@@ -114,6 +115,11 @@ export class Game {
   paused = false;
   jump: JumpState | null = null;
   quality: QualityName;
+  settings: Settings = loadSettings();
+  /** Mouse-aim: where the pilot is looking (system axes). The ship turns to follow it. */
+  readonly aim = new THREE.Quaternion();
+  /** Free-look offset (right mouse held), relative to `aim`; eases back on release. */
+  readonly lookOffset = new THREE.Quaternion();
   /** Called when the player wants the pause menu (pointer released, Esc). */
   onPauseRequest: () => void = () => {};
 
@@ -307,7 +313,7 @@ export class Game {
       }
       this.systemTarget = this.route ? this.galaxy.stars[this.route.stars[1]] : null;
     }
-    this.chase.snap(this.ship.quaternion);
+    this.snapView();
     this.updateFrame(false);
 
     const sys = u.system;
@@ -394,6 +400,58 @@ export class Game {
   setQuality(q: QualityName): void {
     this.quality = q;
     this.pipeline.setQuality(QUALITY[q]);
+  }
+
+  updateSettings(patch: Partial<Settings>): void {
+    this.settings = { ...this.settings, ...patch };
+    saveSettings(this.settings);
+    if (patch.controls) this.snapView();
+  }
+
+  get mouseAim(): boolean {
+    return this.settings.controls === 'aim';
+  }
+
+  /** Point the view (and aim) straight down the ship's nose, e.g. after a teleport. */
+  snapView(): void {
+    this.aim.copy(this.ship.quaternion);
+    this.lookOffset.identity();
+    this.chase.snap(this.ship.quaternion);
+  }
+
+  /** Orientation the camera looks along this frame. */
+  private viewQuaternion(out: THREE.Quaternion): THREE.Quaternion {
+    return out.copy(this.mouseAim ? this.aim : this.ship.quaternion).multiply(this.lookOffset);
+  }
+
+  /** Apply this frame's mouse movement to the aim (or to free-look while right mouse is held). */
+  private steerAim(dt: number, dx: number, dy: number): void {
+    const sens = 0.0016 * this.settings.sensitivity;
+    const inv = this.settings.invertY ? -1 : 1;
+    const freeLook = this.input.isMouseDown(2) && !this.anyMapOpen;
+    const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * sens);
+    const pitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -dy * sens * inv);
+    if (freeLook) {
+      // Look around without turning the ship.
+      this.lookOffset.multiply(yaw).multiply(pitch);
+      return;
+    }
+    this.lookOffset.slerp(new THREE.Quaternion(), 1 - Math.exp(-dt * 6));
+    if (!this.mouseAim) return;
+    if (this.ship.autoAlign && Math.abs(dx) + Math.abs(dy) > 4) this.ship.setAutoAlign(false);
+    this.aim.multiply(yaw).multiply(pitch);
+    const roll = this.input.axis('KeyE', 'KeyQ');
+    if (roll) this.aim.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll * SHIP_STATS.rollRate * 0.8 * dt));
+    // Auto-align swings the aim onto the target; the ship follows as usual.
+    if (this.ship.autoAlign) {
+      const dir = this.target ? this.target.position.clone().sub(this.shipWorld(new THREE.Vector3())).normalize() : this.systemTargetDir();
+      if (dir) {
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.aim);
+        const want = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, up));
+        this.aim.rotateTowards(want, 1.2 * dt);
+      }
+    }
+    this.aim.normalize();
   }
 
   // ---------------------------------------------------------------- saving
@@ -677,12 +735,13 @@ export class Game {
       throttleAxis: i.axis('KeyS', 'KeyW'),
       strafeX: i.axis('KeyA', 'KeyD'),
       strafeY: i.axis('ControlLeft', 'Space'),
-      roll: i.axis('KeyE', 'KeyQ'),
+      roll: this.mouseAim ? 0 : i.axis('KeyE', 'KeyQ'),
       mouseDX: this.pendingMouse.dx,
       mouseDY: this.pendingMouse.dy,
       boost: i.isDown('ShiftLeft') || i.isDown('ShiftRight'),
       zeroThrottle: this.pendingZero,
       toggleSupercruise: this.pendingToggleSC,
+      aim: this.mouseAim ? this.aim : null,
     };
     this.pendingMouse = { dx: 0, dy: 0 };
     this.pendingToggleSC = false;
@@ -878,8 +937,12 @@ export class Game {
     if (!this.paused) this.handleActions();
     else if (this.input.pressed('Escape')) this.onPauseRequest();
     const m = this.input.consumeMouse();
-    this.pendingMouse.dx += m.dx;
-    this.pendingMouse.dy += m.dy;
+    const free = this.input.isMouseDown(2);
+    if (!this.paused && !this.anyMapOpen && !this.inTunnel) this.steerAim(frameDt, m.dx, m.dy);
+    if (!this.mouseAim && !free) {
+      this.pendingMouse.dx += m.dx * this.settings.sensitivity;
+      this.pendingMouse.dy += m.dy * (this.settings.invertY ? -1 : 1) * this.settings.sensitivity;
+    }
     this.input.consumeWheel();
     if (!this.paused && performance.now() / 1000 - this.lastAutosave > AUTOSAVE_INTERVAL) {
       this.lastAutosave = performance.now() / 1000;
@@ -933,7 +996,7 @@ export class Game {
     const flash = ship.transitionAge < 0.6 ? 1 - ship.transitionAge / 0.6 : 0;
     const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3;
     this.lastShake += (shake - this.lastShake) * 0.2;
-    this.chase.update(frameDt, ship.quaternion, speedFactor + scBlend, this.lastShake, this.time);
+    this.chase.update(frameDt, this.viewQuaternion(new THREE.Quaternion()), speedFactor + scBlend, this.lastShake, this.time);
     this.camWorld.copy(world).add(this.chase.offset);
     this.camera.position.set(0, 0, 0);
     this.camera.quaternion.copy(this.chase.quaternion);
@@ -1151,6 +1214,7 @@ export class Game {
         altitude,
         target,
         stick: { x: this.ship.stick.x, y: this.ship.stick.y },
+        nose: this.mouseAim && this.ship.forward.angleTo(new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion)) > 0.012 ? projectDir(this.ship.forward.clone()) : null,
         prograde,
         pointerLocked: this.input.locked,
         fps: this.fps,
@@ -1192,7 +1256,7 @@ export class Game {
       this.ship.quaternion.setFromRotationMatrix(m);
       this.ship.velocity.set(0, 0, 0);
       this.ship.throttle = 0;
-      this.chase.snap(this.ship.quaternion);
+      this.snapView();
       this.updateFrame();
       return `At ${a.name}, altitude ${formatDistance(altitude)}`;
     },
@@ -1202,7 +1266,7 @@ export class Game {
       const world = this.shipWorld(new THREE.Vector3());
       const m = new THREE.Matrix4().lookAt(new THREE.Vector3(), a.position.clone().sub(world), new THREE.Vector3(0, 1, 0));
       this.ship.quaternion.setFromRotationMatrix(m);
-      this.chase.snap(this.ship.quaternion);
+      this.snapView();
       return 'ok';
     },
     /** Point the ship at the current hyperspace target. */
@@ -1210,7 +1274,7 @@ export class Game {
       const dir = this.systemTargetDir();
       if (!dir) return 'no system target';
       this.ship.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, new THREE.Vector3(0, 1, 0)));
-      this.chase.snap(this.ship.quaternion);
+      this.snapView();
       return 'ok';
     },
     supercruise: () => {

@@ -2,6 +2,8 @@
 export class Input {
   private readonly down = new Set<string>();
   private readonly pressedThisFrame = new Set<string>();
+  /** Mouse buttons currently held (0 left, 2 right). */
+  private readonly buttons = new Set<number>();
   mouseDX = 0;
   mouseDY = 0;
   wheel = 0;
@@ -15,7 +17,14 @@ export class Input {
       this.down.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
-    window.addEventListener('blur', () => this.down.clear());
+    window.addEventListener('blur', () => {
+      this.down.clear();
+      this.buttons.clear();
+    });
+    target.addEventListener('mousedown', (e) => this.buttons.add(e.button));
+    window.addEventListener('mouseup', (e) => this.buttons.delete(e.button));
+    // Right mouse is free-look in flight, not a context menu.
+    target.addEventListener('contextmenu', (e) => e.preventDefault());
     target.addEventListener('click', () => {
       if (this.allowPointerLock && !this.locked) void target.requestPointerLock?.();
     });
@@ -37,6 +46,10 @@ export class Input {
 
   isDown(code: string): boolean {
     return this.down.has(code);
+  }
+
+  isMouseDown(button: number): boolean {
+    return this.buttons.has(button);
   }
 
   /** True once on the frame the key went down. */

@@ -41,6 +41,8 @@ export interface HudState {
   prompt: string | null;
   day: number;
   stick: { x: number; y: number };
+  /** Mouse-aim: where the ship's nose actually points (screen px), when it lags the aim. */
+  nose: { x: number; y: number } | null;
   prograde: { x: number; y: number } | null;
   pointerLocked: boolean;
   fps: number;
@@ -94,6 +96,7 @@ export class Hud {
   private readonly stickLine: SVGLineElement;
   private readonly stickDot: SVGCircleElement;
   private readonly prograde: SVGGElement;
+  private readonly nose: SVGGElement;
   private readonly reticle: SVGGElement;
   private lastToast = '';
   private lastToastTime = 0;
@@ -116,6 +119,14 @@ export class Hud {
     svg('circle', { r: 1.5, fill: 'rgba(159,227,255,0.9)' }, this.reticle);
     this.stickLine = svg('line', { stroke: 'rgba(159,227,255,0.35)', 'stroke-width': 1 }, svgRoot);
     this.stickDot = svg('circle', { r: 4, fill: 'none', stroke: 'rgba(255,181,71,0.9)', 'stroke-width': 1.5 }, svgRoot);
+    this.nose = svg('g', {}, svgRoot);
+    svg('circle', { r: 5, fill: 'none', stroke: 'rgba(255,181,71,0.9)', 'stroke-width': 1.5 }, this.nose);
+    for (const [x1, y1, x2, y2] of [
+      [-10, 0, -5, 0],
+      [5, 0, 10, 0],
+    ]) {
+      svg('line', { x1, y1, x2, y2, stroke: 'rgba(255,181,71,0.9)', 'stroke-width': 1.5 }, this.nose);
+    }
     this.prograde = svg('g', {}, svgRoot);
     svg('circle', { r: 7, fill: 'none', stroke: 'rgba(109,255,176,0.85)', 'stroke-width': 1.5 }, this.prograde);
     for (const [x1, y1, x2, y2] of [
@@ -171,10 +182,11 @@ export class Hud {
     this.help = el('div', 'help', this.root);
     this.help.innerHTML = `
       <h4>FLIGHT CONTROLS</h4>
-      <div><kbd>Mouse</kbd>Steer (virtual stick)</div>
+      <div><kbd>Mouse</kbd>Look — the ship flies where you point</div>
+      <div><kbd>RMB</kbd>Hold to look around freely</div>
       <div><kbd>W</kbd><kbd>S</kbd>Throttle up / down · <kbd>X</kbd>Cut</div>
-      <div><kbd>A</kbd><kbd>D</kbd>Strafe · <kbd>Space</kbd><kbd>Ctrl</kbd>Up / down</div>
       <div><kbd>Q</kbd><kbd>E</kbd>Roll · <kbd>Shift</kbd>Boost</div>
+      <div><kbd>A</kbd><kbd>D</kbd><kbd>Space</kbd><kbd>Ctrl</kbd>Strafe (fine manoeuvring)</div>
       <div><kbd>J</kbd>Supercruise · hyperjump if a system is targeted</div>
       <div><kbd>T</kbd>Target ahead · <kbd>[</kbd><kbd>]</kbd>Cycle targets</div>
       <div><kbd>G</kbd>Auto-align to target</div>
@@ -262,6 +274,13 @@ export class Hud {
     this.stickLine.setAttribute('y2', String(sy));
     this.stickDot.setAttribute('cx', String(sx));
     this.stickDot.setAttribute('cy', String(sy));
+    if (s.nose) {
+      this.nose.style.display = '';
+      this.nose.setAttribute('transform', `translate(${s.nose.x},${s.nose.y})`);
+    } else this.nose.style.display = 'none';
+    const showStick = Math.hypot(s.stick.x, s.stick.y) > 0.02;
+    this.stickLine.style.display = showStick ? '' : 'none';
+    this.stickDot.style.display = showStick ? '' : 'none';
     if (s.prograde) {
       this.prograde.style.display = '';
       this.prograde.setAttribute('transform', `translate(${s.prograde.x},${s.prograde.y})`);

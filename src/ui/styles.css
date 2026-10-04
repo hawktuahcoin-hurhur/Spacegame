@@ -1275,3 +1275,23 @@ body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slider input[type='range'] {
+  width: 150px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.slider b {
+  min-width: 46px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: right;
+}

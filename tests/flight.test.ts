@@ -79,4 +79,30 @@ describe('ShipController', () => {
     run(ship, 8, {}, { targetDir: target });
     expect(ship.forward.angleTo(target)).toBeLessThan(0.05);
   });
+
+  it('mouse aim: turns onto the aimed orientation, including roll, without overshooting', () => {
+    for (const [axis, angle] of [
+      [new THREE.Vector3(0, 1, 0), Math.PI / 2],
+      [new THREE.Vector3(1, 0, 0), -Math.PI * 0.8],
+      [new THREE.Vector3(0, 0, 1), Math.PI / 3],
+      [new THREE.Vector3(1, 1, 0).normalize(), 2.5],
+    ] as const) {
+      const ship = new ShipController();
+      const aim = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+      let maxErrAfter = 0;
+      for (let t = 0; t < 8; t += 1 / 60) {
+        ship.update(1 / 60, { ...idle, aim }, openSpace, new THREE.Vector3());
+        if (t > 5) maxErrAfter = Math.max(maxErrAfter, ship.quaternion.angleTo(aim));
+      }
+      expect(ship.quaternion.angleTo(aim)).toBeLessThan(0.01);
+      expect(maxErrAfter).toBeLessThan(0.02);
+    }
+  });
+
+  it('mouse aim ignores raw mouse deltas', () => {
+    const ship = new ShipController();
+    const aim = new THREE.Quaternion();
+    run(ship, 2, { aim, mouseDX: 400, mouseDY: 400 });
+    expect(ship.quaternion.angleTo(aim)).toBeLessThan(1e-6);
+  });
 });

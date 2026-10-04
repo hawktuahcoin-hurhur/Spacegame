@@ -1,4 +1,5 @@
 import type { SaveData } from '../save/saveGame';
+import type { Settings } from '../settings';
 import { SLOT_LABEL, type SaveStorage, type SlotId, exportSave, importSave } from '../save/storage';
 
 export interface MenuActions {
@@ -11,6 +12,8 @@ export interface MenuActions {
   quality(): 'low' | 'medium' | 'high';
   setMuted(m: boolean): void;
   muted(): boolean;
+  settings(): Settings;
+  updateSettings(patch: Partial<Settings>): void;
   quitToTitle(): void;
 }
 
@@ -173,13 +176,34 @@ export class Menu {
 
   showSettings(): void {
     const q = this.actions.quality();
+    const set = this.actions.settings();
     this.show(`
       <h2 class="menu-heading">Settings</h2>
       <div class="setting"><span>Graphics quality</span><div class="seg">${(['low', 'medium', 'high'] as const)
         .map((x) => `<button data-q="${x}" class="${x === q ? 'on' : ''}">${x}</button>`)
         .join('')}</div></div>
       <div class="setting"><span>Sound</span><div class="seg"><button data-mute="0" class="${this.actions.muted() ? '' : 'on'}">On</button><button data-mute="1" class="${this.actions.muted() ? 'on' : ''}">Off</button></div></div>
+      <div class="setting"><span>Flight controls</span><div class="seg"><button data-ctl="aim" class="${set.controls === 'aim' ? 'on' : ''}">Mouse aim</button><button data-ctl="classic" class="${set.controls === 'classic' ? 'on' : ''}">Classic stick</button></div></div>
+      <div class="setting"><span>Invert mouse Y</span><div class="seg"><button data-inv="0" class="${set.invertY ? '' : 'on'}">Off</button><button data-inv="1" class="${set.invertY ? 'on' : ''}">On</button></div></div>
+      <div class="setting"><span>Mouse sensitivity</span><div class="slider"><input type="range" min="0.25" max="3" step="0.05" value="${set.sensitivity}" data-sens /><b data-sens-val>${set.sensitivity.toFixed(2)}×</b></div></div>
       <div class="menu-row"><button data-act="back">Back</button></div>`);
+    this.panel.querySelectorAll<HTMLButtonElement>('[data-ctl]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.actions.updateSettings({ controls: b.dataset.ctl as Settings['controls'] });
+        this.showSettings();
+      }),
+    );
+    this.panel.querySelectorAll<HTMLButtonElement>('[data-inv]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.actions.updateSettings({ invertY: b.dataset.inv === '1' });
+        this.showSettings();
+      }),
+    );
+    const sens = this.panel.querySelector<HTMLInputElement>('[data-sens]')!;
+    sens.addEventListener('input', () => {
+      this.actions.updateSettings({ sensitivity: Number(sens.value) });
+      this.panel.querySelector<HTMLElement>('[data-sens-val]')!.textContent = `${Number(sens.value).toFixed(2)}×`;
+    });
     this.panel.querySelectorAll<HTMLButtonElement>('[data-q]').forEach((b) =>
       b.addEventListener('click', () => {
         this.actions.setQuality(b.dataset.q as 'low' | 'medium' | 'high');

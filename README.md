@@ -28,10 +28,11 @@ URL options: `?galaxy=1337` pre-fills the galaxy seed on the title screen, `?new
 | Key | Action |
 |---|---|
 | Click | Capture mouse (take the helm) |
-| Mouse | Steer (virtual stick, eases back to centre) |
+| Mouse | Look: the ship turns and flies wherever you point |
+| Right mouse (hold) | Free look without turning the ship |
 | W / S, X | Throttle up / down, cut throttle |
-| A / D, Space / Ctrl | Strafe left / right, up / down |
 | Q / E | Roll |
+| A / D, Space / Ctrl | Strafe (fine manoeuvring, e.g. near stations) |
 | Shift | Boost |
 | J | Supercruise: charge & engage / drop. **With a system targeted: hyperjump** |
 | T, [ / ] | Target what's ahead (including neighbouring stars), cycle targets |
@@ -43,6 +44,8 @@ URL options: `?galaxy=1337` pre-fills the galaxy seed on the title screen, `?new
 | F5 / F9 | Quicksave / quickload |
 | Esc | Pause menu (save, load, settings) |
 | H, F3, F4, F6 | Help, FPS, graphics quality, mute |
+
+Prefer the old virtual-joystick steering, inverted Y or a different mouse sensitivity? Change them under **Esc → Settings**; they're remembered per browser.
 
 **Travelling between stars:**
 1. Open the galaxy map (**N**), pick a system and choose **Plot route**. The first hop becomes your hyperspace target.
