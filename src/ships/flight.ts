@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+export type FlightStats = typeof SHIP_STATS;
+
+/** Default flight stats (the starter Kestrel frigate). Real ships derive theirs from hull stats. */
 export const SHIP_STATS = {
   maxSpeed: 260,
   boostMultiplier: 2.6,
@@ -78,8 +81,23 @@ const _local = new THREE.Vector3();
  * supercruise whose speed scales with distance to the nearest gravity well.
  * Velocity and position are relative to the ship's current reference frame.
  */
+/** Flight stats from a hull's effective stats (speed in m/s, turn rate in degrees/s). */
+export function flightStatsFor(hull: { maxSpeed: number; accel: number; turnRate: number }): FlightStats {
+  const turn = THREE.MathUtils.degToRad(hull.turnRate);
+  return {
+    ...SHIP_STATS,
+    maxSpeed: hull.maxSpeed,
+    accel: hull.accel,
+    strafeAccel: hull.accel * 0.75,
+    pitchRate: turn,
+    yawRate: turn * 0.78,
+    rollRate: Math.max(0.6, turn * 1.8),
+  };
+}
+
 export class ShipController {
   mode: FlightMode = 'normal';
+  stats: FlightStats = { ...SHIP_STATS };
   charge = 0;
   throttle = 0;
   scSpeed = 0;
@@ -117,7 +135,7 @@ export class ShipController {
     this.mode = 'normal';
     this.charge = 0;
     if (was === 'supercruise') {
-      this.velocity.copy(this.forward).multiplyScalar(Math.min(this.scSpeed, SHIP_STATS.maxSpeed));
+      this.velocity.copy(this.forward).multiplyScalar(Math.min(this.scSpeed, this.stats.maxSpeed));
       this.throttle = Math.min(this.throttle, 0.75);
       this.transitionAge = 0;
     }
@@ -127,7 +145,7 @@ export class ShipController {
   /** Advance one fixed step. Returns the displacement (frame-relative) to apply. */
   update(dt: number, c: Controls, env: FlightEnv, out: THREE.Vector3): THREE.Vector3 {
     this.transitionAge += dt;
-    const s = SHIP_STATS;
+    const s = this.stats;
 
     // --- Supercruise state machine.
     if (c.toggleSupercruise) {
@@ -213,7 +231,7 @@ export class ShipController {
 
   /** Thrust, supercruise speed and flight assist; returns the frame-relative displacement. */
   private translate(dt: number, c: Controls, env: FlightEnv, out: THREE.Vector3): THREE.Vector3 {
-    const s = SHIP_STATS;
+    const s = this.stats;
     const forward = this.forward.clone();
     _right.set(1, 0, 0).applyQuaternion(this.quaternion);
     _up.set(0, 1, 0).applyQuaternion(this.quaternion);

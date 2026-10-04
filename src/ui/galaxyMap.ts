@@ -13,6 +13,8 @@ export interface GalaxyMapState {
   route: Route | null;
   fuel: number;
   fuelCapacity: number;
+  /** Fleet fuel use relative to a single frigate. */
+  fuelMultiplier: number;
   jumpRange: number;
   visited: Set<number>;
   systemTarget: number | null;
@@ -209,8 +211,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: 
 const v3 = (s: GalaxyStar) => new THREE.Vector3(s.x, s.y, s.z);
 
 /** Max distance affordable with `fuel`, capped by the drive's range. */
-export function fuelRange(fuel: number, jumpRange: number): number {
-  return THREE.MathUtils.clamp((fuel - 1) / 0.6, 0, jumpRange);
+export function fuelRange(fuel: number, jumpRange: number, fuelMultiplier = 1): number {
+  return THREE.MathUtils.clamp((fuel / fuelMultiplier - 1) / 0.6, 0, jumpRange);
 }
 
 export class GalaxyMap {
@@ -528,7 +530,7 @@ export class GalaxyMap {
     this.here.position.set(cur.x, cur.y, cur.z);
     this.rangeRing.position.copy(this.here.position);
     this.rangeRing.scale.setScalar(st.jumpRange);
-    const fr = fuelRange(st.fuel, st.jumpRange);
+    const fr = fuelRange(st.fuel, st.jumpRange, st.fuelMultiplier);
     this.fuelRing.position.copy(this.here.position);
     this.fuelRing.scale.setScalar(Math.max(fr, 0.01));
     this.fuelRing.visible = fr < st.jumpRange - 0.05;
@@ -633,7 +635,7 @@ export class GalaxyMap {
     }
     if (s.index === st.current) desc = 'Your current location. ' + desc;
     const direct = dist <= st.jumpRange && s.index !== st.current;
-    if (direct) rows.push(['Direct jump fuel', `${jumpFuelCost(dist, s.nebula >= 0).toFixed(1)} t`]);
+    if (direct) rows.push(['Direct jump fuel', `${(jumpFuelCost(dist, s.nebula >= 0) * st.fuelMultiplier).toFixed(1)} t`]);
     const onRoute = st.route?.stars[st.route.stars.length - 1] === s.index;
     this.info.classList.remove('hidden');
     this.info.innerHTML = `<h2>${s.name}</h2><div class="type">${visited ? 'Explored system' : 'Unexplored system'}</div><p>${desc}</p>${rows
@@ -657,18 +659,18 @@ export class GalaxyMap {
     let warned = false;
     const rows = r.hops
       .map((h, i) => {
-        fuel -= h.fuel;
+        fuel -= h.fuel * st.fuelMultiplier;
         const short = fuel < 0 && !warned;
         if (short) warned = true;
         const to = this.galaxy.stars[h.to];
-        return `<div class="hop ${fuel < 0 ? 'short' : ''}"><span>${i + 1}. ${to.name}${to.nebula >= 0 ? ' ☁' : ''}</span><span>${h.distance.toFixed(1)} ly · ${h.fuel.toFixed(1)} t</span></div>${
+        return `<div class="hop ${fuel < 0 ? 'short' : ''}"><span>${i + 1}. ${to.name}${to.nebula >= 0 ? ' ☁' : ''}</span><span>${h.distance.toFixed(1)} ly · ${(h.fuel * st.fuelMultiplier).toFixed(1)} t</span></div>${
           short ? '<div class="hop-warn">⚠ Refuel before this jump — scoop at a star</div>' : ''
         }`;
       })
       .join('');
     this.routePanel.classList.remove('hidden');
     this.routePanel.innerHTML = `<h3>Route to ${this.galaxy.stars[r.stars[r.stars.length - 1]].name}</h3>
-      <div class="sum">${r.hops.length} jump${r.hops.length > 1 ? 's' : ''} · ${r.totalDistance.toFixed(1)} ly · ${r.totalFuel.toFixed(1)} t fuel (have ${st.fuel.toFixed(1)} t)</div>
+      <div class="sum">${r.hops.length} jump${r.hops.length > 1 ? 's' : ''} · ${r.totalDistance.toFixed(1)} ly · ${(r.totalFuel * st.fuelMultiplier).toFixed(1)} t fuel (have ${st.fuel.toFixed(1)} t)</div>
       <div class="hops">${rows}</div><button class="secondary" data-act="clear">Clear route</button>`;
     this.routePanel.querySelector<HTMLButtonElement>('[data-act=clear]')!.onclick = () => this.onClearRoute();
   }

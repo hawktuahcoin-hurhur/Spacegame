@@ -13,18 +13,20 @@ export class ChaseCamera {
   private readonly lookAhead = new THREE.Vector3(0, 3, -40);
   private readonly shake = new THREE.Vector3();
   zoom = 1;
+  /** Ship size factor (1 = starter frigate); bigger flagships pull the camera back. */
+  scale = 1;
   orbitYaw = 0;
   orbitPitch = 0;
 
   snap(shipQuat: THREE.Quaternion): void {
-    this.offset.copy(this.baseOffset).applyQuaternion(shipQuat);
+    this.offset.copy(this.baseOffset).multiplyScalar(this.zoom * this.scale).applyQuaternion(shipQuat);
     this.quaternion.copy(shipQuat);
   }
 
   update(dt: number, shipQuat: THREE.Quaternion, speedFactor: number, shakeAmount: number, time: number): void {
-    const local = this.baseOffset.clone().multiplyScalar(this.zoom);
+    const local = this.baseOffset.clone().multiplyScalar(this.zoom * this.scale);
     // Pull back slightly with speed.
-    local.z += speedFactor * 6;
+    local.z += speedFactor * 6 * this.scale;
     local.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.orbitPitch);
     local.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw);
     const desired = local.applyQuaternion(shipQuat);
@@ -32,7 +34,7 @@ export class ChaseCamera {
     this.offset.lerp(desired, k);
 
     // Orientation: look at a point ahead of the ship, with the ship's up vector (smoothed).
-    const look = this.lookAhead.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw).applyQuaternion(shipQuat);
+    const look = this.lookAhead.clone().multiplyScalar(this.scale).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw).applyQuaternion(shipQuat);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(shipQuat);
     const m = new THREE.Matrix4().lookAt(this.offset, look, up);
     const target = new THREE.Quaternion().setFromRotationMatrix(m);

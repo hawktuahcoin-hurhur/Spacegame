@@ -3,6 +3,11 @@ import { Game, type QualityName } from './game';
 import { Menu } from './ui/menu';
 
 const params = new URLSearchParams(location.search);
+if (params.has('gallery')) {
+  document.getElementById('loading')?.remove();
+  void import('./dev/gallery').then((m) => m.runGallery(document.getElementById('app')!, params.get('gallery') === '1' ? null : params.get('gallery')));
+  throw new Error('gallery mode'); // stop normal boot
+}
 const q = params.get('q');
 const defaultQuality: QualityName = window.innerWidth * (window.devicePixelRatio || 1) > 2600 ? 'medium' : 'high';
 const quality: QualityName = q === 'low' || q === 'medium' || q === 'high' ? q : defaultQuality;

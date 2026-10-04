@@ -1,0 +1,1684 @@
+[
+ {
+  "id": "kestrel",
+  "name": "Kestrel",
+  "size": "frigate",
+  "designation": "Light Frigate",
+  "style": "frontier",
+  "manufacturer": "Frontier Yards",
+  "description": "A rugged, well-rounded frigate. The workhorse of frontier captains: fast, forgiving and easy to refit.",
+  "hitpoints": 1600,
+  "armor": 150,
+  "fluxCapacity": 2200,
+  "fluxDissipation": 140,
+  "shield": {
+   "type": "omni",
+   "arc": 300,
+   "efficiency": 0.9,
+   "upkeep": 0.4
+  },
+  "maxSpeed": 260,
+  "accel": 95,
+  "turnRate": 70,
+  "ordnancePoints": 50,
+  "cargo": 80,
+  "fuel": 40,
+  "crew": [
+   10,
+   20
+  ],
+  "suppliesPerJump": 2,
+  "fuelPerLY": 1.0,
+  "jumpRange": 12,
+  "cost": 32000,
+  "shipSystem": "Burn Drive",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "dart",
+   "length": 24,
+   "beam": 0.24,
+   "height": 0.13,
+   "wings": 0.75,
+   "engines": 3,
+   "pods": false,
+   "towers": 0,
+   "seed": 11
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.16,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS02",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.16,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.45,
+    "side": 0,
+    "angle": 0,
+    "arc": 270
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.62,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.62,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "light_autocannon",
+    "WS02": "light_autocannon",
+    "WS03": "heavy_blaster",
+    "WS04": "swarm_rockets",
+    "WS05": "swarm_rockets"
+   },
+   "hullmods": [],
+   "vents": 2,
+   "capacitors": 0
+  }
+ },
+ {
+  "id": "wisp",
+  "name": "Wisp",
+  "size": "frigate",
+  "designation": "Interceptor",
+  "style": "tricorp",
+  "manufacturer": "Tri-Corp Dynamics",
+  "description": "Sleek and frighteningly quick. Hard-hitting energy weapons on a hull that cannot take a punch.",
+  "hitpoints": 1200,
+  "armor": 100,
+  "fluxCapacity": 2600,
+  "fluxDissipation": 180,
+  "shield": {
+   "type": "front",
+   "arc": 160,
+   "efficiency": 0.7,
+   "upkeep": 0.3
+  },
+  "maxSpeed": 300,
+  "accel": 120,
+  "turnRate": 85,
+  "ordnancePoints": 45,
+  "cargo": 40,
+  "fuel": 30,
+  "crew": [
+   6,
+   12
+  ],
+  "suppliesPerJump": 2,
+  "fuelPerLY": 0.8,
+  "jumpRange": 13,
+  "cost": 38000,
+  "shipSystem": "Phase Skimmer",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "needle",
+   "length": 22,
+   "beam": 0.2,
+   "height": 0.11,
+   "wings": 0.55,
+   "engines": 2,
+   "pods": true,
+   "towers": 0,
+   "seed": 23
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "S",
+    "type": "energy",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.12,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS02",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.5,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "S",
+    "type": "energy",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.6,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "energy",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.6,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "pulse_laser",
+    "WS02": "pd_laser",
+    "WS03": "pulse_laser",
+    "WS04": "pulse_laser"
+   },
+   "hullmods": [
+    "augmented_engines"
+   ],
+   "vents": 4,
+   "capacitors": 0
+  }
+ },
+ {
+  "id": "jackal",
+  "name": "Jackal",
+  "size": "frigate",
+  "designation": "Raider",
+  "style": "pirate",
+  "manufacturer": "Salvage-built",
+  "description": "Bolted together from three wrecks and a prayer. Cheap, tough for its size, and a favourite of pirates.",
+  "hitpoints": 1800,
+  "armor": 200,
+  "fluxCapacity": 1800,
+  "fluxDissipation": 110,
+  "shield": {
+   "type": "omni",
+   "arc": 240,
+   "efficiency": 1.1,
+   "upkeep": 0.5
+  },
+  "maxSpeed": 240,
+  "accel": 90,
+  "turnRate": 65,
+  "ordnancePoints": 42,
+  "cargo": 100,
+  "fuel": 35,
+  "crew": [
+   12,
+   25
+  ],
+  "suppliesPerJump": 2,
+  "fuelPerLY": 1.1,
+  "jumpRange": 11,
+  "cost": 18000,
+  "shipSystem": "Flare Launcher",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "brick",
+   "length": 26,
+   "beam": 0.3,
+   "height": 0.17,
+   "wings": 0.4,
+   "engines": 2,
+   "pods": false,
+   "towers": 0,
+   "seed": 37
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": 0,
+    "angle": 0,
+    "arc": 200
+   },
+   {
+    "id": "WS02",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.1,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS03",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.5,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.5,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "flak_cannon",
+    "WS02": "light_mass_driver",
+    "WS03": "harpoon_rack",
+    "WS04": "swarm_rockets"
+   },
+   "hullmods": [
+    "heavy_armor"
+   ],
+   "vents": 0,
+   "capacitors": 0
+  }
+ },
+ {
+  "id": "harrier",
+  "name": "Harrier",
+  "size": "destroyer",
+  "designation": "Missile Destroyer",
+  "style": "frontier",
+  "manufacturer": "Frontier Yards",
+  "description": "A long-range missile platform with enough point defence to look after itself.",
+  "hitpoints": 3600,
+  "armor": 350,
+  "fluxCapacity": 5000,
+  "fluxDissipation": 240,
+  "shield": {
+   "type": "omni",
+   "arc": 300,
+   "efficiency": 1.0,
+   "upkeep": 0.4
+  },
+  "maxSpeed": 210,
+  "accel": 70,
+  "turnRate": 45,
+  "ordnancePoints": 90,
+  "cargo": 180,
+  "fuel": 90,
+  "crew": [
+   30,
+   60
+  ],
+  "suppliesPerJump": 4,
+  "fuelPerLY": 2.0,
+  "jumpRange": 12,
+  "cost": 78000,
+  "shipSystem": "Missile Autoloader",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "dart",
+   "length": 46,
+   "beam": 0.22,
+   "height": 0.13,
+   "wings": 0.5,
+   "engines": 4,
+   "pods": true,
+   "towers": 1,
+   "seed": 41
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.4,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.4,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.7,
+    "side": -1,
+    "angle": 60,
+    "arc": 200
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.7,
+    "side": 1,
+    "angle": -60,
+    "arc": 200
+   },
+   {
+    "id": "WS06",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.08,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "sabot_pod",
+    "WS02": "sabot_pod",
+    "WS03": "heavy_autocannon",
+    "WS04": "flak_cannon",
+    "WS05": "pd_laser",
+    "WS06": "harpoon_rack"
+   },
+   "hullmods": [
+    "missile_racks"
+   ],
+   "vents": 8,
+   "capacitors": 4
+  }
+ },
+ {
+  "id": "bastion",
+  "name": "Bastion",
+  "size": "destroyer",
+  "designation": "Line Destroyer",
+  "style": "hegemony",
+  "manufacturer": "Hegemony Naval Works",
+  "description": "Slab-sided and heavily armoured. Built to hold a line, not to win a race.",
+  "hitpoints": 4800,
+  "armor": 600,
+  "fluxCapacity": 4400,
+  "fluxDissipation": 220,
+  "shield": {
+   "type": "front",
+   "arc": 120,
+   "efficiency": 0.9,
+   "upkeep": 0.4
+  },
+  "maxSpeed": 185,
+  "accel": 55,
+  "turnRate": 38,
+  "ordnancePoints": 85,
+  "cargo": 120,
+  "fuel": 70,
+  "crew": [
+   40,
+   70
+  ],
+  "suppliesPerJump": 4,
+  "fuelPerLY": 2.2,
+  "jumpRange": 11,
+  "cost": 86000,
+  "shipSystem": "Damper Field",
+  "builtInMods": [
+   "heavy_armor"
+  ],
+  "recipe": {
+   "profile": "wedge",
+   "length": 44,
+   "beam": 0.3,
+   "height": 0.17,
+   "wings": 0,
+   "engines": 4,
+   "pods": false,
+   "towers": 1,
+   "seed": 53
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": 0,
+    "angle": 0,
+    "arc": 180
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.45,
+    "side": -1,
+    "angle": 60,
+    "arc": 150
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.45,
+    "side": 1,
+    "angle": -60,
+    "arc": 150
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.75,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.08,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "hellbore",
+    "WS02": "assault_repeater",
+    "WS03": "assault_repeater",
+    "WS04": "flak_cannon",
+    "WS05": "harpoon_rack"
+   },
+   "hullmods": [],
+   "vents": 6,
+   "capacitors": 2
+  }
+ },
+ {
+  "id": "lumen",
+  "name": "Lumen",
+  "size": "destroyer",
+  "designation": "Beam Destroyer",
+  "style": "tricorp",
+  "manufacturer": "Tri-Corp Dynamics",
+  "description": "An elegant energy platform. Long beams strip shields while its escorts move in.",
+  "hitpoints": 3200,
+  "armor": 300,
+  "fluxCapacity": 6200,
+  "fluxDissipation": 320,
+  "shield": {
+   "type": "front",
+   "arc": 180,
+   "efficiency": 0.7,
+   "upkeep": 0.3
+  },
+  "maxSpeed": 220,
+  "accel": 80,
+  "turnRate": 48,
+  "ordnancePoints": 95,
+  "cargo": 100,
+  "fuel": 80,
+  "crew": [
+   25,
+   50
+  ],
+  "suppliesPerJump": 4,
+  "fuelPerLY": 1.8,
+  "jumpRange": 13,
+  "cost": 94000,
+  "shipSystem": "High Energy Focus",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "dart",
+   "length": 42,
+   "beam": 0.24,
+   "height": 0.13,
+   "wings": 0.35,
+   "engines": 3,
+   "pods": true,
+   "towers": 1,
+   "seed": 67
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "M",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.62,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "wing",
+    "t": 0.6,
+    "side": -1,
+    "angle": 30,
+    "arc": 180
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "wing",
+    "t": 0.6,
+    "side": 1,
+    "angle": -30,
+    "arc": 180
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "hybrid",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.08,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "graviton_beam",
+    "WS02": "phase_lance",
+    "WS03": "pd_laser",
+    "WS04": "pd_laser",
+    "WS05": "pulse_laser"
+   },
+   "hullmods": [
+    "flux_distributor"
+   ],
+   "vents": 10,
+   "capacitors": 6
+  }
+ },
+ {
+  "id": "vanguard",
+  "name": "Vanguard",
+  "size": "cruiser",
+  "designation": "Heavy Cruiser",
+  "style": "hegemony",
+  "manufacturer": "Hegemony Naval Works",
+  "description": "The backbone of a Hegemony battle group: thick armour, a forest of guns and a bridge you can see from orbit.",
+  "hitpoints": 9000,
+  "armor": 1000,
+  "fluxCapacity": 9000,
+  "fluxDissipation": 450,
+  "shield": {
+   "type": "front",
+   "arc": 160,
+   "efficiency": 0.85,
+   "upkeep": 0.4
+  },
+  "maxSpeed": 150,
+  "accel": 40,
+  "turnRate": 26,
+  "ordnancePoints": 150,
+  "cargo": 300,
+  "fuel": 160,
+  "crew": [
+   120,
+   220
+  ],
+  "suppliesPerJump": 8,
+  "fuelPerLY": 4,
+  "jumpRange": 11,
+  "cost": 185000,
+  "shipSystem": "Maneuvering Jets",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "wedge",
+   "length": 86,
+   "beam": 0.26,
+   "height": 0.15,
+   "wings": 0,
+   "engines": 5,
+   "pods": true,
+   "towers": 2,
+   "seed": 71
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.22,
+    "side": 0,
+    "angle": 0,
+    "arc": 200
+   },
+   {
+    "id": "WS02",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.4,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.32,
+    "side": -1,
+    "angle": 70,
+    "arc": 150
+   },
+   {
+    "id": "WS04",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.32,
+    "side": 1,
+    "angle": -70,
+    "arc": 150
+   },
+   {
+    "id": "WS05",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.55,
+    "side": -1,
+    "angle": 0,
+    "arc": 15
+   },
+   {
+    "id": "WS06",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.55,
+    "side": 1,
+    "angle": 0,
+    "arc": 15
+   },
+   {
+    "id": "WS07",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.8,
+    "side": -1,
+    "angle": 120,
+    "arc": 200
+   },
+   {
+    "id": "WS08",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.8,
+    "side": 1,
+    "angle": -120,
+    "arc": 200
+   },
+   {
+    "id": "WS09",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "ventral",
+    "t": 0.5,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "gauss_cannon",
+    "WS02": "hellbore",
+    "WS03": "heavy_autocannon",
+    "WS04": "heavy_autocannon",
+    "WS05": "sabot_pod",
+    "WS06": "sabot_pod",
+    "WS07": "flak_cannon",
+    "WS08": "flak_cannon",
+    "WS09": "light_autocannon"
+   },
+   "hullmods": [
+    "integrated_targeting"
+   ],
+   "vents": 12,
+   "capacitors": 6
+  }
+ },
+ {
+  "id": "corsair",
+  "name": "Corsair",
+  "size": "cruiser",
+  "designation": "Raider Cruiser",
+  "style": "pirate",
+  "manufacturer": "Salvage-built",
+  "description": "A converted freighter with engines from something much faster. Pirates love it; insurers do not.",
+  "hitpoints": 7200,
+  "armor": 700,
+  "fluxCapacity": 8000,
+  "fluxDissipation": 400,
+  "shield": {
+   "type": "omni",
+   "arc": 270,
+   "efficiency": 1.0,
+   "upkeep": 0.5
+  },
+  "maxSpeed": 175,
+  "accel": 55,
+  "turnRate": 32,
+  "ordnancePoints": 140,
+  "cargo": 400,
+  "fuel": 200,
+  "crew": [
+   100,
+   180
+  ],
+  "suppliesPerJump": 8,
+  "fuelPerLY": 3.6,
+  "jumpRange": 12,
+  "cost": 140000,
+  "shipSystem": "Plasma Burn",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "brick",
+   "length": 80,
+   "beam": 0.27,
+   "height": 0.15,
+   "wings": 0.35,
+   "engines": 4,
+   "pods": true,
+   "towers": 1,
+   "seed": 83
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.08,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": -1,
+    "angle": 30,
+    "arc": 200
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.3,
+    "side": 1,
+    "angle": -30,
+    "arc": 200
+   },
+   {
+    "id": "WS04",
+    "size": "M",
+    "type": "hybrid",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.55,
+    "side": -1,
+    "angle": 90,
+    "arc": 160
+   },
+   {
+    "id": "WS05",
+    "size": "M",
+    "type": "hybrid",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.55,
+    "side": 1,
+    "angle": -90,
+    "arc": 160
+   },
+   {
+    "id": "WS06",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.75,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   },
+   {
+    "id": "WS07",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.65,
+    "side": -1,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS08",
+    "size": "S",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "wing",
+    "t": 0.65,
+    "side": 1,
+    "angle": 0,
+    "arc": 10
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "cyclone_torpedo",
+    "WS02": "heavy_autocannon",
+    "WS03": "assault_repeater",
+    "WS04": "heavy_blaster",
+    "WS05": "heavy_autocannon",
+    "WS06": "flak_cannon",
+    "WS07": "swarm_rockets",
+    "WS08": "swarm_rockets"
+   },
+   "hullmods": [
+    "augmented_engines"
+   ],
+   "vents": 10,
+   "capacitors": 4
+  }
+ },
+ {
+  "id": "meridian",
+  "name": "Meridian",
+  "size": "cruiser",
+  "designation": "Armed Freighter",
+  "style": "frontier",
+  "manufacturer": "Frontier Yards",
+  "description": "A long-haul freighter with a cruiser's bones. Huge holds and tanks, and enough guns to discourage the curious.",
+  "hitpoints": 7000,
+  "armor": 600,
+  "fluxCapacity": 7000,
+  "fluxDissipation": 380,
+  "shield": {
+   "type": "omni",
+   "arc": 300,
+   "efficiency": 1.0,
+   "upkeep": 0.5
+  },
+  "maxSpeed": 140,
+  "accel": 38,
+  "turnRate": 24,
+  "ordnancePoints": 120,
+  "cargo": 1200,
+  "fuel": 400,
+  "crew": [
+   80,
+   160
+  ],
+  "suppliesPerJump": 7,
+  "fuelPerLY": 3.2,
+  "jumpRange": 13,
+  "cost": 160000,
+  "shipSystem": "Emergency Burn",
+  "builtInMods": [
+   "expanded_cargo"
+  ],
+  "recipe": {
+   "profile": "hauler",
+   "length": 92,
+   "beam": 0.24,
+   "height": 0.16,
+   "wings": 0,
+   "engines": 4,
+   "pods": false,
+   "towers": 1,
+   "seed": 97
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.15,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.85,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.35,
+    "side": -1,
+    "angle": 90,
+    "arc": 180
+   },
+   {
+    "id": "WS04",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.35,
+    "side": 1,
+    "angle": -90,
+    "arc": 180
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.65,
+    "side": -1,
+    "angle": 90,
+    "arc": 180
+   },
+   {
+    "id": "WS06",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.65,
+    "side": 1,
+    "angle": -90,
+    "arc": 180
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "heavy_blaster",
+    "WS02": "heavy_autocannon",
+    "WS03": "flak_cannon",
+    "WS04": "flak_cannon",
+    "WS05": "pd_laser",
+    "WS06": "pd_laser"
+   },
+   "hullmods": [],
+   "vents": 10,
+   "capacitors": 4
+  }
+ },
+ {
+  "id": "dominion",
+  "name": "Dominion",
+  "size": "capital",
+  "designation": "Battleship",
+  "style": "hegemony",
+  "manufacturer": "Hegemony Naval Works",
+  "description": "A flying fortress. When a Dominion jumps into a system, governments change their minds.",
+  "hitpoints": 22000,
+  "armor": 1600,
+  "fluxCapacity": 18000,
+  "fluxDissipation": 900,
+  "shield": {
+   "type": "front",
+   "arc": 180,
+   "efficiency": 0.8,
+   "upkeep": 0.4
+  },
+  "maxSpeed": 100,
+  "accel": 25,
+  "turnRate": 14,
+  "ordnancePoints": 300,
+  "cargo": 600,
+  "fuel": 400,
+  "crew": [
+   600,
+   1000
+  ],
+  "suppliesPerJump": 16,
+  "fuelPerLY": 9,
+  "jumpRange": 10,
+  "cost": 650000,
+  "shipSystem": "Fortress Shield",
+  "builtInMods": [
+   "heavy_armor"
+  ],
+  "recipe": {
+   "profile": "wedge",
+   "length": 170,
+   "beam": 0.24,
+   "height": 0.14,
+   "wings": 0,
+   "engines": 6,
+   "pods": true,
+   "towers": 3,
+   "seed": 101
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.18,
+    "side": 0,
+    "angle": 0,
+    "arc": 200
+   },
+   {
+    "id": "WS02",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.34,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.3,
+    "side": -1,
+    "angle": 70,
+    "arc": 150
+   },
+   {
+    "id": "WS04",
+    "size": "L",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.3,
+    "side": 1,
+    "angle": -70,
+    "arc": 150
+   },
+   {
+    "id": "WS05",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.5,
+    "side": -1,
+    "angle": 0,
+    "arc": 15
+   },
+   {
+    "id": "WS06",
+    "size": "M",
+    "type": "missile",
+    "mount": "hardpoint",
+    "zone": "flank",
+    "t": 0.5,
+    "side": 1,
+    "angle": 0,
+    "arc": 15
+   },
+   {
+    "id": "WS07",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.65,
+    "side": -1,
+    "angle": 100,
+    "arc": 160
+   },
+   {
+    "id": "WS08",
+    "size": "M",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.65,
+    "side": 1,
+    "angle": -100,
+    "arc": 160
+   },
+   {
+    "id": "WS09",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.78,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   },
+   {
+    "id": "WS10",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.6,
+    "side": -1,
+    "angle": 90,
+    "arc": 200
+   },
+   {
+    "id": "WS11",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.6,
+    "side": 1,
+    "angle": -90,
+    "arc": 200
+   },
+   {
+    "id": "WS12",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "ventral",
+    "t": 0.4,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS13",
+    "size": "S",
+    "type": "ballistic",
+    "mount": "turret",
+    "zone": "ventral",
+    "t": 0.7,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "gauss_cannon",
+    "WS02": "hellbore",
+    "WS03": "hellbore",
+    "WS04": "gauss_cannon",
+    "WS05": "sabot_pod",
+    "WS06": "sabot_pod",
+    "WS07": "heavy_autocannon",
+    "WS08": "heavy_autocannon",
+    "WS09": "railgun",
+    "WS10": "flak_cannon",
+    "WS11": "flak_cannon",
+    "WS12": "light_autocannon",
+    "WS13": "light_autocannon"
+   },
+   "hullmods": [
+    "integrated_targeting",
+    "flux_distributor"
+   ],
+   "vents": 24,
+   "capacitors": 12
+  }
+ },
+ {
+  "id": "aurora",
+  "name": "Aurora",
+  "size": "capital",
+  "designation": "Battlecruiser",
+  "style": "tricorp",
+  "manufacturer": "Tri-Corp Dynamics",
+  "description": "Tri-Corp's flagship design: fast for its class, with lances that can cut a cruiser in half.",
+  "hitpoints": 16000,
+  "armor": 1100,
+  "fluxCapacity": 22000,
+  "fluxDissipation": 1200,
+  "shield": {
+   "type": "front",
+   "arc": 240,
+   "efficiency": 0.7,
+   "upkeep": 0.3
+  },
+  "maxSpeed": 120,
+  "accel": 35,
+  "turnRate": 18,
+  "ordnancePoints": 290,
+  "cargo": 400,
+  "fuel": 350,
+  "crew": [
+   400,
+   700
+  ],
+  "suppliesPerJump": 16,
+  "fuelPerLY": 8,
+  "jumpRange": 12,
+  "cost": 720000,
+  "shipSystem": "Temporal Shell",
+  "builtInMods": [],
+  "recipe": {
+   "profile": "needle",
+   "length": 150,
+   "beam": 0.22,
+   "height": 0.12,
+   "wings": 0.9,
+   "engines": 5,
+   "pods": false,
+   "towers": 2,
+   "seed": 113
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.2,
+    "side": 0,
+    "angle": 0,
+    "arc": 200
+   },
+   {
+    "id": "WS02",
+    "size": "L",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.4,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "L",
+    "type": "energy",
+    "mount": "hardpoint",
+    "zone": "nose",
+    "t": 0.06,
+    "side": 0,
+    "angle": 0,
+    "arc": 10
+   },
+   {
+    "id": "WS04",
+    "size": "M",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "wing",
+    "t": 0.55,
+    "side": -1,
+    "angle": 40,
+    "arc": 180
+   },
+   {
+    "id": "WS05",
+    "size": "M",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "wing",
+    "t": 0.55,
+    "side": 1,
+    "angle": -40,
+    "arc": 180
+   },
+   {
+    "id": "WS06",
+    "size": "M",
+    "type": "synergy",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.7,
+    "side": -1,
+    "angle": 100,
+    "arc": 160
+   },
+   {
+    "id": "WS07",
+    "size": "M",
+    "type": "synergy",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.7,
+    "side": 1,
+    "angle": -100,
+    "arc": 160
+   },
+   {
+    "id": "WS08",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.62,
+    "side": -1,
+    "angle": 90,
+    "arc": 220
+   },
+   {
+    "id": "WS09",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.62,
+    "side": 1,
+    "angle": -90,
+    "arc": 220
+   },
+   {
+    "id": "WS10",
+    "size": "S",
+    "type": "energy",
+    "mount": "turret",
+    "zone": "ventral",
+    "t": 0.45,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "plasma_cannon",
+    "WS02": "tachyon_lance",
+    "WS03": "tachyon_lance",
+    "WS04": "phase_lance",
+    "WS05": "phase_lance",
+    "WS06": "graviton_beam",
+    "WS07": "graviton_beam",
+    "WS08": "pd_laser",
+    "WS09": "pd_laser",
+    "WS10": "pd_laser"
+   },
+   "hullmods": [
+    "hardened_shields"
+   ],
+   "vents": 24,
+   "capacitors": 14
+  }
+ },
+ {
+  "id": "atlas",
+  "name": "Atlas",
+  "size": "capital",
+  "designation": "Bulk Hauler",
+  "style": "frontier",
+  "manufacturer": "Frontier Yards",
+  "description": "A colossal hauler that carries a small colony's worth of cargo and fuel. The engine room is the size of a frigate.",
+  "hitpoints": 14000,
+  "armor": 900,
+  "fluxCapacity": 12000,
+  "fluxDissipation": 600,
+  "shield": {
+   "type": "omni",
+   "arc": 360,
+   "efficiency": 1.1,
+   "upkeep": 0.6
+  },
+  "maxSpeed": 95,
+  "accel": 20,
+  "turnRate": 12,
+  "ordnancePoints": 180,
+  "cargo": 4000,
+  "fuel": 1600,
+  "crew": [
+   200,
+   400
+  ],
+  "suppliesPerJump": 12,
+  "fuelPerLY": 6,
+  "jumpRange": 13,
+  "cost": 480000,
+  "shipSystem": "Emergency Burn",
+  "builtInMods": [
+   "expanded_cargo",
+   "auxiliary_fuel_tanks"
+  ],
+  "recipe": {
+   "profile": "hauler",
+   "length": 190,
+   "beam": 0.22,
+   "height": 0.15,
+   "wings": 0,
+   "engines": 6,
+   "pods": true,
+   "towers": 1,
+   "seed": 127
+  },
+  "slots": [
+   {
+    "id": "WS01",
+    "size": "L",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.12,
+    "side": 0,
+    "angle": 0,
+    "arc": 240
+   },
+   {
+    "id": "WS02",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "dorsal",
+    "t": 0.9,
+    "side": 0,
+    "angle": 180,
+    "arc": 240
+   },
+   {
+    "id": "WS03",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.3,
+    "side": -1,
+    "angle": 90,
+    "arc": 180
+   },
+   {
+    "id": "WS04",
+    "size": "M",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.3,
+    "side": 1,
+    "angle": -90,
+    "arc": 180
+   },
+   {
+    "id": "WS05",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.55,
+    "side": -1,
+    "angle": 90,
+    "arc": 180
+   },
+   {
+    "id": "WS06",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.55,
+    "side": 1,
+    "angle": -90,
+    "arc": 180
+   },
+   {
+    "id": "WS07",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.75,
+    "side": -1,
+    "angle": 90,
+    "arc": 180
+   },
+   {
+    "id": "WS08",
+    "size": "S",
+    "type": "universal",
+    "mount": "turret",
+    "zone": "flank",
+    "t": 0.75,
+    "side": 1,
+    "angle": -90,
+    "arc": 180
+   }
+  ],
+  "defaultLoadout": {
+   "weapons": {
+    "WS01": "plasma_cannon",
+    "WS02": "heavy_autocannon",
+    "WS03": "heavy_blaster",
+    "WS04": "heavy_blaster",
+    "WS05": "flak_cannon",
+    "WS06": "flak_cannon",
+    "WS07": "pd_laser",
+    "WS08": "pd_laser"
+   },
+   "hullmods": [],
+   "vents": 16,
+   "capacitors": 8
+  }
+ }
+]

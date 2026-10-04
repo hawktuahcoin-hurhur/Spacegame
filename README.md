@@ -2,7 +2,7 @@
 
 A 3D space exploration & commerce sim in Three.js: No Man's Sky-style procedural exploration meets Starsector-style fleets, fitting and a living faction economy.
 
-See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–2 are playable:** a procedural galaxy of about 670 star systems you can chart, jump between, and save your progress in.
+See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–3 are playable:** a procedural galaxy of about 670 star systems you can chart and jump between, plus a fleet of procedurally built ships you can buy, refit and fly in formation.
 
 ## Run
 You need **Node.js 20.19+ or 22.12+**. Check with `node -v`, and get the LTS from [nodejs.org](https://nodejs.org) if yours is older.
@@ -39,7 +39,8 @@ URL options: `?galaxy=1337` pre-fills the galaxy seed on the title screen, `?new
 | G | Auto-align to target |
 | M | System map (click to select, **Set target**) |
 | N | Galaxy map (search, **Plot route**) |
-| R | Refuel & resupply when near a station |
+| R | Dock when near a station: refit, shipyard, refuel |
+| F | Fleet & refit screen (view-only until docked) |
 | C | Camera distance |
 | F5 / F9 | Quicksave / quickload |
 | Esc | Pause menu (save, load, settings) |
@@ -52,6 +53,15 @@ Prefer the old virtual-joystick steering, inverted Y or a different mouse sensit
 2. Fly clear of planets and stations (mass lock), then press **J**.
 3. Line the reticle up with the target (or press **G**) during the 5 s charge.
 4. You exit in supercruise next to the new star, with the next hop already targeted.
+
+**Building a fleet:**
+1. Dock at a station with **R**.
+2. In **Shipyard**, buy hulls (you start with ¢250,000).
+3. In **Fleet & Refit**, click a slot marker on the 3D ship or a slot in the list, then pick a weapon. Hovering a weapon previews the stat changes.
+4. Add hullmods, balance flux with vents, or hit **Autofit**.
+5. **Make flagship** changes the ship you fly. The rest of the fleet escorts you.
+
+Bigger fleets carry more fuel and cargo but burn more per jump, and they jump only as far as their shortest-ranged drive.
 
 **Running low on fuel?** Skim a star's corona to scoop, or press **R** at any station.
 

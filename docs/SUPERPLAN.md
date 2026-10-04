@@ -272,12 +272,42 @@ Each phase ends with a **playable build** and a demo goal.
 - **Menus** (`src/ui/menu.ts`): title screen (Continue, New expedition with galaxy seed, Load, Settings); pause on Esc or when the pointer is released (Resume, Save, Load, Settings, Exit).
 - **Audio** (`src/audio/audio.ts`): fully synthesised WebAudio (engine rumble tied to throttle, supercruise drone, frame-shift charge whine, hyperspace roar, arrival boom, scoop hiss, UI blips), with no asset files. This pulls part of the Phase 9 audio work forward.
 
-### Phase 3 — Ships & Fitting (Weeks 6–8)
+### Phase 3 — Ships & Fitting (Weeks 6–8)  ✅ *done*
 - Content defs (JSON): 12 hulls (3 per size), 20 weapons, 15 hullmods
 - Procedural ship mesh builder with faction styles
 - Refit screen with OP budgeting, live stats
 - Fleet roster
 - **Demo**: own multiple ships, refit them, see visual weapons mounted.
+
+**As built:**
+- **Content** (`src/content/*.json`):
+  - **Hulls:** 12 hulls, 3 per size class across four manufacturer styles (Frontier Yards, Hegemony Naval Works, Tri-Corp Dynamics, salvage-built pirates). They include two commerce hulls, the Meridian armed freighter and the Atlas bulk hauler.
+  - **Weapons:** 20 weapons, 8 ballistic, 8 energy and 4 missile, covering projectiles, beams and guided missiles. Damage types are kinetic, HE, energy and frag, and some weapons are point defence.
+  - **Hullmods:** 15 hullmods, with per-size OP costs, requirements and incompatibilities.
+  - **Validation:** `validateContent()` checks structure, and a test proves every stock loadout is legal.
+- **Fitting engine** (`src/ships/fitting.ts`, pure and tested):
+  - Slot compatibility follows Starsector rules: same size or one smaller, and universal/hybrid/composite/synergy slot types.
+  - Budgets: OP, vents and capacitors.
+  - Hullmods are applied as order-independent additions and then multipliers.
+  - Effective stats cover DPS by damage type, weapon flux vs dissipation, range, logistics and jump range.
+  - Autofit is greedy by DPS per OP, keeps point defence, and spends leftover OP on vents (until flux-neutral), then capacitors.
+- **Procedural ships** (`src/ships/shipBuilder.ts`):
+  - Each hull is lofted from a style profile (dart, wedge, needle, brick, hauler) and the recipe's length, beam and height.
+  - Optional parts: wings, engine pods, bridge towers, cargo container rows, greebles and pirate patch plating, in per-manufacturer palettes and bevels.
+  - Ten weapon model families are scaled by slot size and mounted at the real slot positions: dorsal and ventral turrets, flank sponsons, wing hardpoints and nose hardpoints.
+  - Turrets track the camera aim within their firing arcs.
+- **Fleet** (`src/ships/fleet.ts`): up to 10 ships with a flagship.
+  - Logistics come from the fleet: total fuel tanks and holds, the shortest drive sets the jump range, and fuel and supplies per jump are the sum across ships.
+  - The flagship's hull sets your flight stats and camera distance.
+  - Escorts fly abreast in formation, banking through turns, through supercruise and hyperjumps.
+- **Dock / Fleet screen** (`src/ui/fleetScreen.ts`; **R** at a station, **F** anywhere):
+  - Layout: a roster on the left, a 3D studio turntable with clickable slot markers and firing-arc fans, live stats on the right, and the editor at the bottom.
+  - Editor: weapon table (hover to preview stat deltas), hullmod cards, vents and capacitor steppers with flux-balance advice, Autofit/Stock/Strip, rename, make flagship, sell.
+  - Shipyard: per-station stock from the station seed and region, with credits (start ¢250k, 70% resale).
+  - Services: refuel and resupply.
+  - Refits are view-only while undocked.
+- **Saves v2**: the fleet and credits are persisted. v1 saves migrate to a starter fleet, and unknown hulls, weapons or mods from changed content are dropped instead of failing the load.
+- **Dev**: `?gallery=1` (or `?gallery=kestrel,dominion`) renders every hull's stock loadout for eyeballing the builder.
 
 ### Phase 4 — Combat (Weeks 9–13)  ⚠ highest-risk phase
 - Weapons/projectiles/beams/missiles with pooling

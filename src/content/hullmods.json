@@ -1,0 +1,307 @@
+[
+ {
+  "id": "heavy_armor",
+  "name": "Heavy Armor",
+  "op": [
+   8,
+   15,
+   20,
+   30
+  ],
+  "effects": [
+   {
+    "stat": "armor",
+    "add": [
+     150,
+     300,
+     400,
+     500
+    ]
+   },
+   {
+    "stat": "maxSpeed",
+    "mult": 0.95
+   }
+  ],
+  "description": "Extra ablative plating. Slightly slower."
+ },
+ {
+  "id": "hardened_shields",
+  "name": "Hardened Shields",
+  "op": [
+   4,
+   8,
+   12,
+   18
+  ],
+  "effects": [
+   {
+    "stat": "shieldEfficiency",
+    "mult": 0.8
+   }
+  ],
+  "description": "Shields absorb 20% more damage per unit of flux.",
+  "requires": "shield"
+ },
+ {
+  "id": "extended_shields",
+  "name": "Extended Shields",
+  "op": [
+   3,
+   6,
+   9,
+   14
+  ],
+  "effects": [
+   {
+    "stat": "shieldArc",
+    "add": 60
+   }
+  ],
+  "description": "Widens shield coverage by 60\u00b0.",
+  "requires": "shield"
+ },
+ {
+  "id": "front_shield_emitter",
+  "name": "Front Shield Emitter",
+  "op": [
+   3,
+   5,
+   8,
+   12
+  ],
+  "effects": [
+   {
+    "stat": "shieldType",
+    "set": "front"
+   },
+   {
+    "stat": "shieldArc",
+    "add": -60
+   },
+   {
+    "stat": "shieldEfficiency",
+    "mult": 0.85
+   }
+  ],
+  "description": "Converts an omni shield into a narrower but stronger forward shield.",
+  "requires": "omniShield"
+ },
+ {
+  "id": "augmented_engines",
+  "name": "Augmented Engines",
+  "op": [
+   5,
+   10,
+   15,
+   25
+  ],
+  "effects": [
+   {
+    "stat": "maxSpeed",
+    "mult": 1.15
+   },
+   {
+    "stat": "accel",
+    "mult": 1.2
+   }
+  ],
+  "description": "Tuned drive coils: +15% top speed, +20% acceleration."
+ },
+ {
+  "id": "integrated_targeting",
+  "name": "Integrated Targeting Unit",
+  "op": [
+   4,
+   8,
+   12,
+   20
+  ],
+  "effects": [
+   {
+    "stat": "range.all",
+    "mult": 1.2
+   }
+  ],
+  "description": "Fire-control computer: +20% range for all weapons.",
+  "incompatible": [
+   "safety_overrides"
+  ]
+ },
+ {
+  "id": "flux_distributor",
+  "name": "Flux Distributor",
+  "op": [
+   4,
+   8,
+   12,
+   18
+  ],
+  "effects": [
+   {
+    "stat": "fluxDissipation",
+    "mult": 1.1
+   }
+  ],
+  "description": "+10% flux dissipation."
+ },
+ {
+  "id": "flux_coil",
+  "name": "Flux Coil Adjunct",
+  "op": [
+   4,
+   8,
+   12,
+   18
+  ],
+  "effects": [
+   {
+    "stat": "fluxCapacity",
+    "mult": 1.15
+   }
+  ],
+  "description": "+15% flux capacity."
+ },
+ {
+  "id": "reinforced_bulkheads",
+  "name": "Reinforced Bulkheads",
+  "op": [
+   3,
+   6,
+   10,
+   15
+  ],
+  "effects": [
+   {
+    "stat": "hitpoints",
+    "mult": 1.2
+   }
+  ],
+  "description": "+20% hull integrity."
+ },
+ {
+  "id": "expanded_cargo",
+  "name": "Expanded Cargo Holds",
+  "op": [
+   2,
+   4,
+   6,
+   10
+  ],
+  "effects": [
+   {
+    "stat": "cargo",
+    "mult": 1.3
+   }
+  ],
+  "description": "+30% cargo capacity."
+ },
+ {
+  "id": "auxiliary_fuel_tanks",
+  "name": "Auxiliary Fuel Tanks",
+  "op": [
+   2,
+   4,
+   6,
+   10
+  ],
+  "effects": [
+   {
+    "stat": "fuel",
+    "mult": 1.3
+   }
+  ],
+  "description": "+30% fuel capacity."
+ },
+ {
+  "id": "efficiency_overhaul",
+  "name": "Efficiency Overhaul",
+  "op": [
+   3,
+   6,
+   9,
+   14
+  ],
+  "effects": [
+   {
+    "stat": "suppliesPerJump",
+    "mult": 0.75
+   },
+   {
+    "stat": "fuelPerLY",
+    "mult": 0.85
+   }
+  ],
+  "description": "Lower supply and fuel consumption."
+ },
+ {
+  "id": "jump_drive_tuning",
+  "name": "Jump Drive Tuning",
+  "op": [
+   4,
+   6,
+   8,
+   12
+  ],
+  "effects": [
+   {
+    "stat": "jumpRange",
+    "add": 2
+   },
+   {
+    "stat": "fuelPerLY",
+    "mult": 1.1
+   }
+  ],
+  "description": "+2 ly hyperjump range, at a slight fuel cost."
+ },
+ {
+  "id": "missile_racks",
+  "name": "Expanded Missile Racks",
+  "op": [
+   4,
+   8,
+   12,
+   18
+  ],
+  "effects": [
+   {
+    "stat": "rof.missile",
+    "mult": 1.25
+   }
+  ],
+  "description": "+25% missile rate of fire.",
+  "requires": "missileSlot"
+ },
+ {
+  "id": "safety_overrides",
+  "name": "Safety Overrides",
+  "op": [
+   5,
+   10,
+   15,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "maxSpeed",
+    "mult": 1.3
+   },
+   {
+    "stat": "fluxDissipation",
+    "mult": 1.5
+   },
+   {
+    "stat": "range.all",
+    "mult": 0.6
+   }
+  ],
+  "description": "Disables safety interlocks: much faster and cooler, but weapons lose range.",
+  "notSizes": [
+   "capital"
+  ],
+  "incompatible": [
+   "integrated_targeting"
+  ]
+ }
+]

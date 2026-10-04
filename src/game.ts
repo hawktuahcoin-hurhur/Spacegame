@@ -6,7 +6,7 @@ import { type GalaxyDef, type GalaxyStar, starDistance } from './galaxy/galaxyGe
 import { jumpFuelCost, type Route } from './galaxy/route';
 import { generateSystem } from './galaxy/systemGen';
 import { PLANET_TYPE_LABEL } from './planets/planetTypes';
-import { JUMP_DURATION_DAYS, type PlayerState, SECONDS_PER_DAY, SUPPLIES_PER_JUMP, newPlayer, scoopRate } from './player';
+import { JUMP_DURATION_DAYS, type PlayerState, SECONDS_PER_DAY, newPlayer, refreshLogistics, scoopRate } from './player';
 import { PlanetBaker } from './render/bake/planetBaker';
 import { ChaseCamera } from './render/chaseCamera';
 import { HyperspaceTunnel } from './render/hyperspace';
@@ -14,12 +14,17 @@ import { QUALITY, RenderPipeline } from './render/pipeline';
 import { SpaceDust } from './render/spaceDust';
 import { SAVE_VERSION, type SaveData, playerFromSave } from './save/saveGame';
 import { SaveStorage, type SlotId } from './save/storage';
-import { type Controls, type FlightEnv, ShipController, SHIP_STATS } from './ships/flight';
-import { createShip, type ShipVisual } from './ships/shipMesh';
+import { type Controls, type FlightEnv, ShipController, flightStatsFor } from './ships/flight';
+import { type ShipVisual, buildShip } from './ships/shipBuilder';
+import { EscortFormation } from './ships/escorts';
+import { computeStats } from './ships/fitting';
+import { flagship } from './ships/fleet';
 import { SimClient } from './sim/simClient';
 import { type Settings, loadSettings, saveSettings } from './settings';
 import { formatDistance, formatDuration, formatSpeed } from './ui/format';
 import { GalaxyMap, type GalaxyMapState } from './ui/galaxyMap';
+import { FleetScreen, type FleetTab } from './ui/fleetScreen';
+import { shipyardStock } from './ships/fleet';
 import { Hud, type HudState, type MarkerData } from './ui/hud';
 import { SystemMap } from './ui/systemMap';
 import { SystemView } from './world/systemView';
@@ -87,7 +92,10 @@ export class Game {
   readonly input: Input;
   readonly baker: PlanetBaker;
   readonly ship = new ShipController();
-  readonly shipVisual: ShipVisual;
+  shipVisual!: ShipVisual;
+  readonly escorts = new EscortFormation();
+  /** Key of the flagship loadout the current visual was built from. */
+  private flagshipKey = '';
   readonly chase = new ChaseCamera();
   readonly dust: SpaceDust;
   readonly hud: Hud;
@@ -95,6 +103,7 @@ export class Game {
   readonly sim = new SimClient();
   readonly storage = new SaveStorage();
   readonly tunnel = new HyperspaceTunnel();
+  readonly fleetScreen: FleetScreen;
 
   galaxy!: GalaxyDef;
   galaxyMap!: GalaxyMap;
@@ -143,11 +152,28 @@ export class Game {
     this.pipeline = new RenderPipeline(container, QUALITY[quality]);
     this.input = new Input(this.pipeline.renderer.domElement);
     this.baker = new PlanetBaker(this.pipeline.renderer);
-    this.shipVisual = createShip();
+    this.rebuildFleetVisuals();
     this.dust = new SpaceDust(7);
     this.hud = new Hud(document.body);
     this.hud.setVisible(false);
     this.pipeline.renderer.domElement.addEventListener('pointerdown', () => this.audio.start());
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const game = this;
+    this.fleetScreen = new FleetScreen(this.pipeline, {
+      get player() {
+        return game.player;
+      },
+      get dock() {
+        return game.dockInfo();
+      },
+      fleetChanged: () => {
+        this.rebuildFleetVisuals();
+        void this.saveTo('auto');
+      },
+      refuel: () => this.resupply(),
+      toast: (m, k) => this.hud.toast(m, k),
+      close: () => this.toggleFleetScreen(),
+    });
 
     document.addEventListener('pointerlockchange', () => {
       // Losing the pointer mid-flight (Esc) opens the pause menu.
@@ -185,7 +211,25 @@ export class Game {
   }
 
   get anyMapOpen(): boolean {
-    return !!(this.map?.open || this.galaxyMap?.open);
+    return !!(this.map?.open || this.galaxyMap?.open || this.fleetScreen?.open);
+  }
+
+  /** Station services available right now (docked = within reach of a station, slow, normal flight). */
+  dockInfo(): { stationName: string; stock: string[] } | null {
+    const st = this.resupplyStation();
+    if (!st || st.kind !== 'station') return null;
+    const region = this.galaxy.stars[this.systemIndex].region;
+    return { stationName: st.name, stock: shipyardStock((st as unknown as { def: { seed: number } }).def.seed, region) };
+  }
+
+  toggleFleetScreen(tab: FleetTab = 'fleet'): void {
+    if (this.fleetScreen.open) {
+      this.fleetScreen.hide();
+      this.afterMapToggle(false);
+    } else {
+      this.fleetScreen.show(tab);
+      this.afterMapToggle(true);
+    }
   }
 
   // ---------------------------------------------------------------- loading
@@ -221,7 +265,7 @@ export class Game {
     this.view = b.view;
     this.map = b.map;
     this.systemIndex = b.index;
-    this.scene.add(this.shipVisual.root, this.dust.mesh);
+    this.scene.add(this.shipVisual.root, this.dust.mesh, this.escorts.group);
     this.target = null;
     this.frame = null;
   }
@@ -230,6 +274,7 @@ export class Game {
     onProgress(0, 'Mapping the galaxy');
     await this.loadGalaxy(seed);
     this.player = newPlayer();
+    this.rebuildFleetVisuals();
     this.route = null;
     this.systemTarget = null;
     this.time = 0;
@@ -242,6 +287,7 @@ export class Game {
     onProgress(0, 'Mapping the galaxy');
     await this.loadGalaxy(save.galaxySeed);
     this.player = playerFromSave(newPlayer(), save);
+    this.rebuildFleetVisuals();
     this.time = save.time;
     this.route = save.route.length >= 2 ? this.routeFromStars(save.route) : null;
     this.systemTarget = save.target?.kind === 'system' ? (this.galaxy.stars[save.target.index] ?? null) : null;
@@ -417,6 +463,37 @@ export class Game {
     this.aim.copy(this.ship.quaternion);
     this.lookOffset.identity();
     this.chase.snap(this.ship.quaternion);
+    this.escorts.snap(this.ship.quaternion);
+  }
+
+  /**
+   * Rebuild the flagship mesh, flight stats and escorts from the fleet. Cheap
+   * when nothing changed; call after any refit, purchase or flagship swap.
+   */
+  rebuildFleetVisuals(): void {
+    const flag = flagship(this.player.fleet);
+    const key = JSON.stringify([flag.id, flag.loadout]);
+    if (key !== this.flagshipKey) {
+      this.flagshipKey = key;
+      const parent = this.shipVisual?.root.parent;
+      if (this.shipVisual) {
+        this.shipVisual.root.removeFromParent();
+        this.shipVisual.dispose();
+      }
+      this.shipVisual = buildShip(flag.loadout);
+      parent?.add(this.shipVisual.root);
+      this.ship.stats = flightStatsFor(computeStats(flag.loadout));
+      // The starter frigate's bounding radius is ~13 m; scale the chase camera from it.
+      this.chase.scale = Math.max(1, this.shipVisual.radius / 13);
+    }
+    const others = this.player.fleet.ships.filter((x) => x.id !== flag.id);
+    this.escorts.sync(others, this.shipVisual.radius, this.ship.quaternion);
+    refreshLogistics(this.player);
+  }
+
+  /** Collision radius of the flagship. */
+  get shipRadius(): number {
+    return this.shipVisual.radius * 0.8;
   }
 
   /** Orientation the camera looks along this frame. */
@@ -441,7 +518,7 @@ export class Game {
     if (this.ship.autoAlign && Math.abs(dx) + Math.abs(dy) > 4) this.ship.setAutoAlign(false);
     this.aim.multiply(yaw).multiply(pitch);
     const roll = this.input.axis('KeyE', 'KeyQ');
-    if (roll) this.aim.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll * SHIP_STATS.rollRate * 0.8 * dt));
+    if (roll) this.aim.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll * this.ship.stats.rollRate * 0.8 * dt));
     // Auto-align swings the aim onto the target; the ship follows as usual.
     if (this.ship.autoAlign) {
       const dir = this.target ? this.target.position.clone().sub(this.shipWorld(new THREE.Vector3())).normalize() : this.systemTargetDir();
@@ -459,7 +536,7 @@ export class Game {
   snapshot(): SaveData {
     const star = this.galaxy.stars[this.systemIndex];
     // Never persist mid-supercruise/jump: store a calm normal-flight state.
-    const vel = this.ship.mode === 'supercruise' ? this.ship.forward.clone().multiplyScalar(SHIP_STATS.maxSpeed * 0.5) : this.ship.velocity;
+    const vel = this.ship.mode === 'supercruise' ? this.ship.forward.clone().multiplyScalar(this.ship.stats.maxSpeed * 0.5) : this.ship.velocity;
     return {
       version: SAVE_VERSION,
       savedAt: Date.now(),
@@ -480,7 +557,9 @@ export class Game {
         visited: [...this.player.visited],
         jumps: this.player.jumps,
         distanceLy: this.player.distanceLy,
+        credits: this.player.credits,
       },
+      fleet: { flagshipId: this.player.fleet.flagshipId, ships: this.player.fleet.ships.map((x) => ({ ...x, loadout: { ...x.loadout, weapons: { ...x.loadout.weapons }, hullmods: [...x.loadout.hullmods] } })) },
       route: this.route?.stars ?? [],
       target: this.target ? { kind: 'local', id: this.target.id } : this.systemTarget ? { kind: 'system', index: this.systemTarget.index } : null,
     };
@@ -550,6 +629,7 @@ export class Game {
       route: this.route,
       fuel: this.player.fuel,
       fuelCapacity: this.player.fuelCapacity,
+      fuelMultiplier: this.player.fuelMultiplier,
       jumpRange: this.player.jumpRange,
       visited: this.player.visited,
       systemTarget: this.systemTarget?.index ?? null,
@@ -615,10 +695,15 @@ export class Game {
     const here = this.galaxy.stars[this.systemIndex];
     const d = starDistance(here, dest);
     if (d > this.player.jumpRange) return `${dest.name} is out of range (${d.toFixed(1)} ly > ${this.player.jumpRange} ly)`;
-    const fuel = jumpFuelCost(d, dest.nebula >= 0);
+    const fuel = this.jumpFuel(here, dest);
     if (this.player.fuel < fuel) return `Insufficient fuel: need ${fuel.toFixed(1)} t — scoop at the star`;
-    if (this.player.supplies < SUPPLIES_PER_JUMP) return 'Insufficient supplies — resupply at a station';
+    if (this.player.supplies < this.player.suppliesPerJump) return 'Insufficient supplies — resupply at a station';
     return this.massLock(world);
+  }
+
+  /** Fuel for a jump with the whole fleet. */
+  jumpFuel(from: GalaxyStar, to: GalaxyStar): number {
+    return jumpFuelCost(starDistance(from, to), to.nebula >= 0) * this.player.fuelMultiplier;
   }
 
   private startJump(): void {
@@ -686,13 +771,14 @@ export class Game {
     const here = this.galaxy.stars[j.from];
     const dest = this.galaxy.stars[j.dest];
     const d = starDistance(here, dest);
-    this.player.fuel -= jumpFuelCost(d, dest.nebula >= 0);
-    this.player.supplies -= SUPPLIES_PER_JUMP;
+    this.player.fuel -= this.jumpFuel(here, dest);
+    this.player.supplies -= this.player.suppliesPerJump;
     this.time += JUMP_DURATION_DAYS * SECONDS_PER_DAY;
     this.ship.dropOut('Entering hyperspace');
     this.ship.autoAlign = false;
     if (this.map.open) this.toggleMap();
     if (this.galaxyMap.open) this.toggleGalaxyMap();
+    if (this.fleetScreen.open) this.toggleFleetScreen();
     j.phase = 'tunnel';
     j.t = 0;
     this.audio.stopCharge();
@@ -777,7 +863,7 @@ export class Game {
       return true;
     };
     for (const b of this.universe.bodies) {
-      if (push(b.position, b.radius + 30)) {
+      if (push(b.position, b.radius + 30 + this.shipRadius)) {
         if (this.ship.mode !== 'normal') this.ship.dropOut('Impact warning — emergency drop');
         this.hud.toast('Surface contact', 'warn');
       }
@@ -788,7 +874,7 @@ export class Game {
       const inv = _q.copy(st.rotation).invert();
       const local = world.clone().sub(st.position).applyQuaternion(inv);
       const R = st.radius * 0.78;
-      const tube = st.radius * 0.07 + 20;
+      const tube = st.radius * 0.07 + this.shipRadius;
       const ringDist = Math.hypot(Math.hypot(local.x, local.z) - R, local.y);
       if (ringDist < tube) {
         const ringPt = new THREE.Vector3(local.x, 0, local.z).setLength(R).applyQuaternion(st.rotation).add(st.position);
@@ -796,16 +882,16 @@ export class Game {
       }
       const spY = THREE.MathUtils.clamp(local.y, -st.radius * 0.72, st.radius * 0.72);
       const spinePt = new THREE.Vector3(0, spY, 0).applyQuaternion(st.rotation).add(st.position);
-      push(spinePt, st.radius * 0.2 + 20);
+      push(spinePt, st.radius * 0.2 + this.shipRadius);
     }
-    for (const r of this.view.rockColliders()) push(r.position, r.radius + 15);
+    for (const r of this.view.rockColliders()) push(r.position, r.radius + this.shipRadius);
   }
 
   /** Station in reach for resupply, if any. */
   private resupplyStation(): Anchor | null {
     if (!this.frame || this.frame.kind !== 'station') return null;
     const d = this.shipWorld(_v).distanceTo(this.frame.position);
-    return d < 4500 && this.ship.speed < 90 && this.ship.mode === 'normal' ? this.frame : null;
+    return d < 6000 && this.ship.speed < 90 && this.ship.mode === 'normal' ? this.frame : null;
   }
 
   private resupply(): void {
@@ -827,10 +913,15 @@ export class Game {
 
   private handleActions(): void {
     const i = this.input;
-    if (i.pressed('KeyM') && !this.galaxyMap.open && !this.inTunnel) this.toggleMap();
-    if (i.pressed('KeyN') && !this.map.open && !this.inTunnel) this.toggleGalaxyMap();
+    if (i.pressed('KeyM') && !this.galaxyMap.open && !this.fleetScreen.open && !this.inTunnel) this.toggleMap();
+    if (i.pressed('KeyN') && !this.map.open && !this.fleetScreen.open && !this.inTunnel) this.toggleGalaxyMap();
+    if (this.fleetScreen.open && (i.pressed('Escape') || i.pressed('KeyF'))) {
+      this.toggleFleetScreen();
+      return;
+    }
     if (i.pressed('Escape')) {
-      if (this.map.open) this.toggleMap();
+      if (this.fleetScreen.open) this.toggleFleetScreen();
+      else if (this.map.open) this.toggleMap();
       else if (this.galaxyMap.open) this.toggleGalaxyMap();
       else if (!this.input.locked) this.onPauseRequest();
     }
@@ -846,7 +937,11 @@ export class Game {
       else this.pendingToggleSC = true;
     }
     if (i.pressed('KeyX')) this.pendingZero = true;
-    if (i.pressed('KeyR')) this.resupply();
+    if (i.pressed('KeyR')) {
+      if (this.resupplyStation()) this.toggleFleetScreen('fleet');
+      else this.hud.toast('No station in reach — fly within 6 km and slow down to dock', 'warn');
+    }
+    if (i.pressed('KeyF')) this.toggleFleetScreen('fleet');
     if (i.pressed('KeyH')) this.hud.setHelp(!this.hud.helpVisible);
     if (i.pressed('F3')) this.showFps = !this.showFps;
     if (i.pressed('F4')) {
@@ -990,9 +1085,13 @@ export class Game {
       this.galaxyMap.render(frameDt, performance.now() / 1000);
       return;
     }
+    if (this.fleetScreen.open) {
+      this.fleetScreen.render(frameDt, performance.now() / 1000);
+      return;
+    }
 
     // Camera.
-    const speedFactor = THREE.MathUtils.clamp(ship.speed / (SHIP_STATS.maxSpeed * SHIP_STATS.boostMultiplier), 0, 1);
+    const speedFactor = THREE.MathUtils.clamp(ship.speed / (ship.stats.maxSpeed * ship.stats.boostMultiplier), 0, 1);
     const flash = ship.transitionAge < 0.6 ? 1 - ship.transitionAge / 0.6 : 0;
     const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3;
     this.lastShake += (shake - this.lastShake) * 0.2;
@@ -1018,6 +1117,11 @@ export class Game {
       -ship.angular.y * 0.35 + ship.angular.z * 0.05,
       ship.angular.x * 0.08,
     );
+
+    // Turrets track wherever the camera is looking; escorts hold formation.
+    const aimLocal = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).applyQuaternion(_q.copy(ship.quaternion).invert());
+    this.shipVisual.aimTurrets(aimLocal, frameDt);
+    this.escorts.update(frameDt, this.time, this.shipVisual.root.position, ship.quaternion, ship.throttle, ship.boosting, Math.max(scBlend, jumpCharge), aimLocal);
 
     const pixelsPerRadian = window.innerHeight / THREE.MathUtils.degToRad(this.camera.fov);
     const ctx = { origin: this.camWorld, camera: this.camera, time: this.time, dt: frameDt, pixelsPerRadian };
@@ -1142,7 +1246,7 @@ export class Game {
       const dest = this.systemTarget;
       const dir = galaxyDir(here, dest);
       const d = starDistance(here, dest);
-      const fuel = jumpFuelCost(d, dest.nebula >= 0);
+      const fuel = this.jumpFuel(here, dest);
       const angle = THREE.MathUtils.radToDeg(this.alignmentAngle());
       const s = projectDir(dir);
       const remaining = this.route ? this.route.hops.length : 1;
@@ -1200,7 +1304,7 @@ export class Game {
           : { title: 'Align with destination', sub: 'The jump fires when the target is under the reticle' };
     }
     const station = this.resupplyStation();
-    const prompt = station ? `[R] Refuel & resupply at ${station.name}` : null;
+    const prompt = station ? `[R] Dock at ${station.name}` : null;
 
     this.hud.update(
       {
