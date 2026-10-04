@@ -189,10 +189,19 @@ function makeOrbit(rng: Rng, a: number, period: number, maxIncl: number, maxEcc:
  * Deterministically generate a star system from a seed.
  * Same seed → identical output (tested in tests/systemGen.test.ts).
  */
-export function generateSystem(seed: number): StarSystemDef {
+/**
+ * The first draws of a system's RNG stream: its name and star. Shared with the
+ * galaxy generator so the galaxy map always agrees with the system you arrive in.
+ */
+export function systemHeader(seed: number): { rng: Rng; name: string; star: StarDef } {
   const rng = new Rng(seed);
   const name = generateSystemName(rng);
   const star = makeStar(rng, name);
+  return { rng, name, star };
+}
+
+export function generateSystem(seed: number): StarSystemDef {
+  const { rng, name, star } = systemHeader(seed);
   const hz = HZ_BASE * Math.sqrt(star.luminosity);
 
   const bodies: BodyDef[] = [];

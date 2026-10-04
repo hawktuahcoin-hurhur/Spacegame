@@ -1,12 +1,14 @@
-import { formatDistance, formatDuration, formatSpeed } from './format';
+import { formatDistance, formatSpeed } from './format';
 
 export interface MarkerData {
   id: string;
-  kind: 'star' | 'body' | 'station';
+  kind: 'star' | 'body' | 'station' | 'system';
   name: string;
   x: number;
   y: number;
   distance: number;
+  /** Overrides the formatted distance (e.g. light-years for other systems). */
+  distanceText?: string;
   /** On-screen radius of the object (px), for brackets. */
   radiusPx: number;
   target: boolean;
@@ -24,13 +26,20 @@ export interface HudState {
   target: {
     name: string;
     sub: string;
-    distance: number;
-    eta: number | null;
-    relSpeed: number | null;
-    align: boolean;
+    rows: [string, string][];
+    status: string;
+    statusOn: boolean;
     /** Screen-edge arrow when the target is off-screen: angle in radians, or null. */
     edgeAngle: number | null;
+    hyperspace: boolean;
   } | null;
+  fuel: { value: number; capacity: number; scooping: number };
+  supplies: { value: number; capacity: number };
+  /** Large centre banner (jump countdown etc.). */
+  banner: { title: string; sub: string } | null;
+  /** Contextual action prompt, e.g. "[R] Resupply". */
+  prompt: string | null;
+  day: number;
   stick: { x: number; y: number };
   prograde: { x: number; y: number } | null;
   pointerLocked: boolean;
@@ -73,6 +82,15 @@ export class Hud {
   private readonly edgeArrow: HTMLDivElement;
   private readonly help: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
+  private readonly fuelFill: HTMLDivElement;
+  private readonly fuelLabel: HTMLDivElement;
+  private readonly supFill: HTMLDivElement;
+  private readonly supLabel: HTMLDivElement;
+  private readonly scoop: HTMLDivElement;
+  private readonly banner: HTMLDivElement;
+  private readonly action: HTMLDivElement;
+  private readonly hyper: HTMLDivElement;
+  private readonly flash: HTMLDivElement;
   private readonly stickLine: SVGLineElement;
   private readonly stickDot: SVGCircleElement;
   private readonly prograde: SVGGElement;
@@ -127,6 +145,24 @@ export class Hud {
       t.style.bottom = `${f * 100}%`;
     }
 
+    const res = el('div', 'hud-resources', this.root);
+    const fuelRow = el('div', 'res-row', res);
+    el('span', 'res-name', fuelRow).textContent = 'FUEL';
+    const fuelBar = el('div', 'res-bar fuel', fuelRow);
+    this.fuelFill = el('div', '', fuelBar);
+    this.fuelLabel = el('div', 'res-val', fuelRow);
+    const supRow = el('div', 'res-row', res);
+    el('span', 'res-name', supRow).textContent = 'SUPPLY';
+    const supBar = el('div', 'res-bar sup', supRow);
+    this.supFill = el('div', '', supBar);
+    this.supLabel = el('div', 'res-val', supRow);
+    this.scoop = el('div', 'res-scoop', res);
+
+    this.banner = el('div', 'hud-banner hidden', this.root);
+    this.action = el('div', 'hud-action hidden', this.root);
+    this.hyper = el('div', 'hyper-overlay hidden', document.body);
+    this.flash = el('div', 'flash', document.body);
+
     this.targetPanel = el('div', 'hud-target', this.root);
     this.corner = el('div', 'hud-corner', this.root);
     this.toasts = el('div', 'toasts', this.root);
@@ -139,11 +175,13 @@ export class Hud {
       <div><kbd>W</kbd><kbd>S</kbd>Throttle up / down · <kbd>X</kbd>Cut</div>
       <div><kbd>A</kbd><kbd>D</kbd>Strafe · <kbd>Space</kbd><kbd>Ctrl</kbd>Up / down</div>
       <div><kbd>Q</kbd><kbd>E</kbd>Roll · <kbd>Shift</kbd>Boost</div>
-      <div><kbd>J</kbd>Supercruise engage / drop</div>
+      <div><kbd>J</kbd>Supercruise · hyperjump if a system is targeted</div>
       <div><kbd>T</kbd>Target ahead · <kbd>[</kbd><kbd>]</kbd>Cycle targets</div>
       <div><kbd>G</kbd>Auto-align to target</div>
-      <div><kbd>M</kbd>System map · <kbd>C</kbd>Camera zoom</div>
-      <div><kbd>F3</kbd>Stats · <kbd>F4</kbd>Quality · <kbd>H</kbd>Toggle help</div>`;
+      <div><kbd>M</kbd>System map · <kbd>N</kbd>Galaxy map</div>
+      <div><kbd>R</kbd>Resupply at station · <kbd>C</kbd>Camera</div>
+      <div><kbd>F5</kbd>Quicksave · <kbd>F9</kbd>Quickload · <kbd>Esc</kbd>Menu</div>
+      <div><kbd>F3</kbd>Stats · <kbd>F4</kbd>Quality · <kbd>F6</kbd>Mute · <kbd>H</kbd>Help</div>`;
 
     this.prompt = el('div', 'prompt', this.root);
     this.prompt.textContent = 'Click to take the helm';
@@ -159,6 +197,27 @@ export class Hud {
 
   setVisible(v: boolean): void {
     this.root.classList.toggle('hidden', !v);
+  }
+
+  /** Full-screen hyperspace caption. */
+  setHyperspace(info: { dest: string; detail: string } | null): void {
+    this.hyper.classList.toggle('hidden', !info);
+    if (info) this.hyper.innerHTML = `<div class="h-label">HYPERSPACE</div><div class="h-dest">${info.dest}</div><div class="h-detail">${info.detail}</div>`;
+  }
+
+  /** White-out flash, e.g. at hyperspace exit. */
+  flashScreen(duration = 900): void {
+    this.flash.style.transition = 'none';
+    this.flash.style.opacity = '1';
+    void this.flash.offsetWidth;
+    this.flash.style.transition = `opacity ${duration}ms ease-out`;
+    this.flash.style.opacity = '0';
+  }
+
+  dispose(): void {
+    this.root.remove();
+    this.hyper.remove();
+    this.flash.remove();
   }
 
   toast(text: string, kind: '' | 'warn' | 'good' = ''): void {
@@ -210,15 +269,11 @@ export class Hud {
 
     const t = s.target;
     this.targetPanel.classList.toggle('show', !!t);
+    this.targetPanel.classList.toggle('hyper', !!t?.hyperspace);
     if (t) {
-      const rows = [
-        ['Distance', formatDistance(t.distance)],
-        ['ETA', t.eta === null ? '—' : formatDuration(t.eta)],
-      ];
-      if (t.relSpeed !== null) rows.push(['Closing', `${formatSpeed(t.relSpeed).value} ${formatSpeed(t.relSpeed).unit}`]);
-      this.targetPanel.innerHTML = `<h3>${t.name}</h3><div class="sub">${t.sub}</div>${rows
+      this.targetPanel.innerHTML = `<h3>${t.name}</h3><div class="sub">${t.sub}</div>${t.rows
         .map(([a, b]) => `<div class="row"><span>${a}</span><span>${b}</span></div>`)
-        .join('')}<div class="align ${t.align ? 'on' : ''}">${t.align ? '● AUTO-ALIGN ENGAGED' : '[G] AUTO-ALIGN'}</div>`;
+        .join('')}<div class="align ${t.statusOn ? 'on' : ''}">${t.status}</div>`;
       if (t.edgeAngle !== null) {
         const r = Math.min(cx, cy) - 40;
         const ex = cx + Math.cos(t.edgeAngle) * r;
@@ -228,7 +283,19 @@ export class Hud {
       } else this.edgeArrow.style.display = 'none';
     } else this.edgeArrow.style.display = 'none';
 
-    this.corner.innerHTML = `${s.showFps ? `${s.fps.toFixed(0)} FPS<br>` : ''}[H] CONTROLS · [M] MAP`;
+    const fuelFrac = s.fuel.value / s.fuel.capacity;
+    this.fuelFill.style.width = `${(fuelFrac * 100).toFixed(1)}%`;
+    this.fuelFill.parentElement!.classList.toggle('low', fuelFrac < 0.25);
+    this.fuelLabel.textContent = `${s.fuel.value.toFixed(1)} t`;
+    this.supFill.style.width = `${((s.supplies.value / s.supplies.capacity) * 100).toFixed(1)}%`;
+    this.supLabel.textContent = `${Math.floor(s.supplies.value)}`;
+    this.scoop.textContent = s.fuel.scooping > 0 ? `▲ SCOOPING +${s.fuel.scooping.toFixed(2)} t/s` : '';
+    this.banner.classList.toggle('hidden', !s.banner);
+    if (s.banner) this.banner.innerHTML = `<div class="b-title">${s.banner.title}</div><div class="b-sub">${s.banner.sub}</div>`;
+    this.action.classList.toggle('hidden', !s.prompt);
+    if (s.prompt) this.action.textContent = s.prompt;
+
+    this.corner.innerHTML = `${s.showFps ? `${s.fps.toFixed(0)} FPS<br>` : ''}DAY ${s.day}<br>[H] CONTROLS · [M] SYSTEM · [N] GALAXY`;
     this.prompt.classList.toggle('hidden', s.pointerLocked);
 
     this.updateMarkers(markers);
@@ -259,10 +326,11 @@ export class Hud {
         e.brackets.style.height = `${2 * r}px`;
       }
       (e.root.children[1] as HTMLElement).style.display = big ? 'none' : '';
-      const key = `${m.name}|${formatDistance(m.distance)}`;
+      const dist = m.distanceText ?? formatDistance(m.distance);
+      const key = `${m.name}|${dist}`;
       if (key !== e.key) {
         e.key = key;
-        e.label.innerHTML = `<b>${m.name}</b><i>${formatDistance(m.distance)}</i>`;
+        e.label.innerHTML = `<b>${m.name}</b><i>${dist}</i>`;
       }
       e.label.style.left = big ? `${Math.min(r, 260) + 6}px` : '10px';
       e.label.style.top = big ? `${-Math.min(r, 260)}px` : '-8px';

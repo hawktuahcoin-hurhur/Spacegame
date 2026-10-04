@@ -247,11 +247,30 @@ Each phase ends with a **playable build** and a demo goal.
 - **UI**: nav markers with brackets and an off-screen target arrow, a target panel with ETA, the system map (log-scaled orbits, textured globes, info panel, set target) and a help overlay.
 - **Debug**: `window.game.debug` (`goto`, `lookAt`, `target`, `supercruise`, `map`, `anchors`).
 
-### Phase 2 — Galaxy & Travel (Weeks 4–5)
+### Phase 2 — Galaxy & Travel (Weeks 4–5)  ✅ *done*
 - Galaxy generator in worker; galaxy map scene with jump plotting
 - Fuel/supply logistics, hyperspace transition effect
 - Save/load (seed + deltas) to IndexedDB
 - **Demo**: jump between systems; save and reload.
+
+**As built:**
+- **Galaxy** (`src/galaxy/galaxyGen.ts`): about 670 stars per galaxy seed in a log-spiral disc (2–4 arms, central bulge, field stars), with a minimum 3.2 ly spacing.
+  - "Bridge" stars stitch isolated clusters into one jump network, so 95%+ of stars are reachable at 12 ly.
+  - Each galaxy has 6–10 nebulae along the arms and core/frontier/fringe regions.
+  - Each star's name and class come from its system's own seed header, so the map always matches the system you arrive in (tested).
+  - The start system is a well-connected frontier system with a station and a living world.
+- **Routing** (`src/galaxy/route.ts`): A* over a jump graph, minimising jumps first and fuel second (tested against BFS). Fuel cost is `1 + 0.6·ly`, ×1.4 for entering a nebula.
+- **Worker** (`src/sim/`): galaxy generation and route plotting run in a Web Worker behind a typed promise RPC (`SimClient`). The same `SimHost` handler runs in-thread as a fallback. Phase 5's economy tick plugs in here.
+- **Galaxy map** (`src/ui/galaxyMap.ts`):
+  - Visuals: a procedural spiral-arm glow disc matching the generator, a haze of 30k unresolved stars, nebula billboards and HDR star points.
+  - Navigation overlays: jump-range and fuel-range rings, a polar grid with drop lines, and an animated route tube.
+  - Interaction: search, hover tooltips, an info panel for explored or unexplored systems, a route panel with fuel-shortfall warnings, and label collision culling.
+- **Sky**: system axes are aligned with the galaxy, so every other system appears in its true direction and brightness. Your hyperspace target is literally a star you can point at. The galactic band and bulge follow the real galactic plane and core; systems inside a nebula get its colours.
+- **Hyperjump**: a system target plus **J** gives a 5 s charge with countdown, an alignment requirement (within 9°, auto-align works), mass-lock checks, and fuel and supplies checks. The witch-space tunnel (a swirling FBM vortex tinted by the destination star and nebula) hides the next system's generation and baking. You exit in supercruise beside the new star, the route advances, and the next hop is targeted automatically. A jump takes 1 in-game day.
+- **Logistics** (`src/player.ts`): a 40 t fuel tank; fuel scooping in a star's corona (rate rises toward the surface); 80 supplies with 2 used per jump; refuel and resupply at stations with **R** (free until the Phase 5 economy). Every system has a station and a star, so the player can never get stranded.
+- **Saves** (`src/save/`): versioned `SaveData` (seed + deltas: system, frame-relative ship state, fuel and supplies, visited systems, route, target) with a migration hook and strict validation of untrusted JSON. Stored in IndexedDB with a localStorage fallback. Slots are autosave (on arrival, every 5 min, and on tab hide), quicksave (F5/F9) and 3 manual slots, with export/import as JSON files.
+- **Menus** (`src/ui/menu.ts`): title screen (Continue, New expedition with galaxy seed, Load, Settings); pause on Esc or when the pointer is released (Resume, Save, Load, Settings, Exit).
+- **Audio** (`src/audio/audio.ts`): fully synthesised WebAudio (engine rumble tied to throttle, supercruise drone, frame-shift charge whine, hyperspace roar, arrival boom, scoop hiss, UI blips), with no asset files. This pulls part of the Phase 9 audio work forward.
 
 ### Phase 3 — Ships & Fitting (Weeks 6–8)
 - Content defs (JSON): 12 hulls (3 per size), 20 weapons, 15 hullmods

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import type { BeltDef } from '../galaxy/types';
+import { type GalaxyDef, starDistance } from '../galaxy/galaxyGen';
 import { type BakedMaps, PlanetBaker, disposeMaps } from '../render/bake/planetBaker';
 import type { AtmosphereUniform } from '../render/pipeline';
 import {
@@ -256,6 +257,14 @@ export class PlanetView {
     }
   }
 
+  dispose(): void {
+    this.pending?.cancel();
+    this.pending = null;
+    if (this.high) disposeMaps(this.high);
+    if (this.low) disposeMaps(this.low);
+    this.high = null;
+  }
+
   get hasHighLod(): boolean {
     return this.high !== null || this.pending !== null;
   }
@@ -475,6 +484,12 @@ class StationView {
 }
 
 /** Builds and updates every renderable in a star system. */
+/** Where this system sits in the galaxy: drives the sky's neighbour stars, galactic band and nebula tint. */
+export interface SkyContext {
+  galaxy: GalaxyDef;
+  index: number;
+}
+
 export class SystemView {
   readonly star: StarView;
   readonly planets: PlanetView[] = [];
@@ -484,60 +499,87 @@ export class SystemView {
   readonly fillLight: THREE.HemisphereLight;
   readonly sunColor: THREE.Color;
   private skyRT: THREE.WebGLCubeRenderTarget | null = null;
+  private envTexture: THREE.Texture | null = null;
   private readonly starPointsMat: THREE.ShaderMaterial;
   private readonly camInv = new THREE.Quaternion();
+  /** Everything this view added to the scene, for disposal. */
+  private readonly owned: THREE.Object3D[] = [];
 
   constructor(
     readonly scene: THREE.Scene,
     readonly universe: Universe,
     private readonly renderer: THREE.WebGLRenderer,
     private readonly baker: PlanetBaker,
+    private readonly sky: SkyContext | null = null,
   ) {
     this.sunColor = new THREE.Color(...universe.system.star.color);
     this.star = new StarView(universe);
-    scene.add(this.star.mesh, this.star.corona);
+    this.own(this.star.mesh, this.star.corona);
     for (const b of universe.bodies) {
       const pv = new PlanetView(b, this.sunColor);
       this.planets.push(pv);
-      scene.add(pv.mesh);
-      if (pv.ring) scene.add(pv.ring);
+      this.own(pv.mesh);
+      if (pv.ring) this.own(pv.ring);
     }
     for (const def of universe.system.belts) {
       const bv = new BeltView(def, this.sunColor);
       this.belts.push(bv);
-      scene.add(bv.group, bv.rockGroup);
+      this.own(bv.group, bv.rockGroup);
     }
     for (const st of universe.stations) {
       const sv = new StationView(st);
       this.stations.push(sv);
-      scene.add(sv.visual.root);
+      this.own(sv.visual.root);
     }
 
     this.sunLight = new THREE.DirectionalLight(this.sunColor, 3.2);
-    scene.add(this.sunLight, this.sunLight.target);
+    this.own(this.sunLight, this.sunLight.target);
     this.fillLight = new THREE.HemisphereLight(0x000000, 0x000000, 1);
-    scene.add(this.fillLight);
+    this.own(this.fillLight);
 
     const { points, material } = this.createStarPoints();
     this.starPointsMat = material;
-    scene.add(points);
+    this.own(points);
+  }
+
+  private own(...objs: THREE.Object3D[]): void {
+    this.owned.push(...objs);
+    this.scene.add(...objs);
   }
 
   private createStarPoints(): { points: THREE.Points; material: THREE.ShaderMaterial } {
     const rng = new Rng(Rng.derive(this.universe.system.seed, 3));
-    const count = 3500;
+    const filler = 2800;
+    const real = this.sky ? this.sky.galaxy.stars.length - 1 : 0;
+    const count = filler + real;
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
     const size = new Float32Array(count);
     const phase = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
+    // Real neighbouring systems, in their true directions: the star you plot a jump to is in the sky.
+    if (this.sky) {
+      const self = this.sky.galaxy.stars[this.sky.index];
+      let k = filler;
+      for (const st of this.sky.galaxy.stars) {
+        if (st.index === self.index) continue;
+        const d = starDistance(st, self);
+        const dir = _v.set(st.x - self.x, st.y - self.y, st.z - self.z).normalize().multiplyScalar(1000);
+        pos.set([dir.x, dir.y, dir.z], k * 3);
+        const b = THREE.MathUtils.clamp((st.luminosity * 60) / (d * d), 0.07, 7);
+        col.set([st.color[0] * b, st.color[1] * b, st.color[2] * b], k * 3);
+        size[k] = 2 + Math.min(8, Math.sqrt(b) * 3.2);
+        phase[k] = rng.next();
+        k++;
+      }
+    }
+    for (let i = 0; i < filler; i++) {
       const u = rng.range(-1, 1);
       const th = rng.range(0, Math.PI * 2);
       const s = Math.sqrt(1 - u * u);
       pos.set([s * Math.cos(th) * 1000, u * 1000, s * Math.sin(th) * 1000], i * 3);
-      const mag = Math.pow(rng.next(), 6);
+      const mag = Math.pow(rng.next(), this.sky ? 9 : 6);
       const c = blackbody(rng.range(3000, 15000));
-      const b = 0.25 + mag * 6;
+      const b = (this.sky ? 0.15 : 0.25) + mag * (this.sky ? 2.5 : 6);
       col.set([c[0] * b, c[1] * b, c[2] * b], i * 3);
       size[i] = 2.2 + mag * 7;
       phase[i] = rng.next();
@@ -596,8 +638,27 @@ export class SystemView {
       [260, 320, 180],
       [30, 200, 340],
     ];
-    const [h1, h2, h3] = rng.pick(palettes);
+    let [h1, h2, h3] = rng.pick(palettes);
     const jitter = () => rng.range(-15, 15);
+    let density = rng.range(0.1, 0.22);
+    let galaxyNormal = new THREE.Vector3(rng.range(-0.4, 0.4), 1, rng.range(-0.4, 0.4)).normalize();
+    const coreDir = new THREE.Vector3(1, 0, 0);
+    let coreBoost = 0;
+    if (this.sky) {
+      const g = this.sky.galaxy;
+      const self = g.stars[this.sky.index];
+      // System axes are galaxy axes: the band is the true galactic plane, brightest towards the core.
+      galaxyNormal = new THREE.Vector3(0, 1, 0);
+      coreDir.set(-self.x, -self.y, -self.z).normalize();
+      const r = Math.hypot(self.x, self.z) / g.shape.radius;
+      coreBoost = THREE.MathUtils.clamp(1.6 - r * 1.4, 0.2, 1.6);
+      if (self.nebula >= 0) {
+        const n = g.nebulae[self.nebula];
+        [h1, h2, h3] = [n.hue, n.hue + 40, n.hue - 35];
+        // Deeper inside the cloud → denser sky.
+        density *= 2.6 - 1.2 * (starDistance(self, n) / n.radius);
+      }
+    }
     const mat = new THREE.ShaderMaterial({
       vertexShader: skyBakeVertex,
       fragmentShader: skyBakeFragment,
@@ -609,8 +670,10 @@ export class SystemView {
         uColA: { value: new THREE.Color(...hsl(h1 + jitter(), 0.75, 0.45)) },
         uColB: { value: new THREE.Color(...hsl(h2 + jitter(), 0.7, 0.4)) },
         uColC: { value: new THREE.Color(...hsl(h3 + jitter(), 0.8, 0.6)) },
-        uGalaxyNormal: { value: new THREE.Vector3(rng.range(-0.4, 0.4), 1, rng.range(-0.4, 0.4)).normalize() },
-        uDensity: { value: rng.range(0.1, 0.22) },
+        uGalaxyNormal: { value: galaxyNormal },
+        uDensity: { value: density },
+        uCoreDir: { value: coreDir },
+        uCoreBoost: { value: coreBoost },
       },
     });
     const scene = new THREE.Scene();
@@ -625,9 +688,29 @@ export class SystemView {
     this.scene.background = rt.texture;
     this.scene.backgroundIntensity = 1;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromCubemap(rt.texture).texture;
+    this.envTexture = pmrem.fromCubemap(rt.texture).texture;
+    this.scene.environment = this.envTexture;
     this.scene.environmentIntensity = 0.55;
     pmrem.dispose();
+  }
+
+  /** Free every GPU resource this system created. */
+  dispose(): void {
+    for (const o of this.owned) {
+      o.removeFromParent();
+      o.traverse((c) => {
+        const m = c as THREE.Mesh;
+        m.geometry?.dispose();
+        const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+        for (const mat of mats) mat.dispose();
+      });
+    }
+    this.owned.length = 0;
+    for (const pv of this.planets) pv.dispose();
+    this.skyRT?.dispose();
+    this.envTexture?.dispose();
+    if (this.scene.background === this.skyRT?.texture) this.scene.background = null;
+    if (this.scene.environment === this.envTexture) this.scene.environment = null;
   }
 
   get skyTexture(): THREE.Texture | null {

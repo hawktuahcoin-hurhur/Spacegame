@@ -10,6 +10,8 @@ uniform vec3 uColB;
 uniform vec3 uColC;
 uniform vec3 uGalaxyNormal;
 uniform float uDensity;
+uniform vec3 uCoreDir;
+uniform float uCoreBoost;
 ${NOISE_GLSL}
 
 vec3 warp(vec3 p) {
@@ -20,6 +22,10 @@ void main() {
   vec3 d = normalize(vDir);
   float gl = dot(d, uGalaxyNormal);
   float band = exp(-gl * gl * 14.0);
+  // The galactic core: a warm bulge where the band thickens.
+  float toCore = max(dot(d, uCoreDir), 0.0);
+  float bulge = pow(toCore, 6.0) * exp(-gl * gl * 4.0) * uCoreBoost;
+  band *= 1.0 + pow(toCore, 3.0) * uCoreBoost;
   vec3 p = d * 1.8 + uSeed;
   vec3 w = warp(p);
   float n = fbm(p + w * 1.6, 8) * 0.5 + 0.5;
@@ -32,6 +38,7 @@ void main() {
   // Unresolved starlight of the galactic disc.
   float milky = band * (0.5 + 0.7 * (fbm(d * 10.0 + uSeed, 5) * 0.5 + 0.5));
   col += vec3(0.75, 0.75, 0.9) * milky * 0.035;
+  col += vec3(1.0, 0.82, 0.6) * bulge * 0.09 * (0.7 + 0.5 * fbm(d * 8.0 + uSeed, 4));
   col *= 1.0 - dust * 0.85;
   // Dense faint stars, more of them in the band.
   for (int layer = 0; layer < 2; layer++) {

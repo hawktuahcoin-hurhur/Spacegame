@@ -461,6 +461,17 @@ export class SystemMap {
       time,
     });
   }
+
+  dispose(): void {
+    this.controls.dispose();
+    this.ui.remove();
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const mat of mats) mat.dispose();
+    });
+  }
 }
 
 function radialTexture(): THREE.Texture {
