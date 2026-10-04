@@ -12,7 +12,7 @@ export class Input {
 
   constructor(private readonly target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Tab' || e.code === 'F3' || e.code === 'Space') e.preventDefault();
+      if (e.code === 'Tab' || e.code === 'F3' || e.code === 'Space' || e.code === 'F5') e.preventDefault();
       if (!e.repeat) this.pressedThisFrame.add(e.code);
       this.down.add(e.code);
     });
@@ -21,7 +21,11 @@ export class Input {
       this.down.clear();
       this.buttons.clear();
     });
-    target.addEventListener('mousedown', (e) => this.buttons.add(e.button));
+    target.addEventListener('mousedown', (e) => {
+      this.buttons.add(e.button);
+      // Edges as pseudo key codes: pressed('Mouse0'), pressed('Mouse2').
+      if (this.locked) this.pressedThisFrame.add(`Mouse${e.button}`);
+    });
     window.addEventListener('mouseup', (e) => this.buttons.delete(e.button));
     // Right mouse is free-look in flight, not a context menu.
     target.addEventListener('contextmenu', (e) => e.preventDefault());

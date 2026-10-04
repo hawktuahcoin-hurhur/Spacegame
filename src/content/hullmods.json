@@ -58,7 +58,7 @@
     "add": 60
    }
   ],
-  "description": "Widens shield coverage by 60\u00b0.",
+  "description": "Widens shield coverage by 60°.",
   "requires": "shield"
  },
  {
@@ -303,5 +303,122 @@
   "incompatible": [
    "integrated_targeting"
   ]
+ },
+ {
+  "id": "dmod_armor",
+  "name": "Compromised Armor",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "armor",
+    "mult": 0.75
+   }
+  ],
+  "description": "D-mod: patched plating. −25% armour.",
+  "dmod": true
+ },
+ {
+  "id": "dmod_flux",
+  "name": "Faulty Power Grid",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "fluxDissipation",
+    "mult": 0.85
+   }
+  ],
+  "description": "D-mod: shorted conduits. −15% flux dissipation.",
+  "dmod": true
+ },
+ {
+  "id": "dmod_engines",
+  "name": "Degraded Engines",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "maxSpeed",
+    "mult": 0.88
+   },
+   {
+    "stat": "accel",
+    "mult": 0.85
+   }
+  ],
+  "description": "D-mod: cracked drive coils. −12% top speed.",
+  "dmod": true
+ },
+ {
+  "id": "dmod_hull",
+  "name": "Compromised Hull",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "hitpoints",
+    "mult": 0.8
+   }
+  ],
+  "description": "D-mod: warped structure. −20% hull integrity.",
+  "dmod": true
+ },
+ {
+  "id": "dmod_shields",
+  "name": "Damaged Shield Emitter",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "shieldEfficiency",
+    "mult": 1.15
+   }
+  ],
+  "description": "D-mod: misaligned emitters. Shields take 15% more flux.",
+  "requires": "shield",
+  "dmod": true
+ },
+ {
+  "id": "dmod_logistics",
+  "name": "Leaking Fuel Lines",
+  "op": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "effects": [
+   {
+    "stat": "fuelPerLY",
+    "mult": 1.2
+   },
+   {
+    "stat": "suppliesPerJump",
+    "mult": 1.15
+   }
+  ],
+  "description": "D-mod: everything leaks. +20% fuel and +15% supply use.",
+  "dmod": true
  }
 ]

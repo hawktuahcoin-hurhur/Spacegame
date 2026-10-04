@@ -18,7 +18,8 @@ describe('content', () => {
   it('has the planned amount of content and no structural errors', () => {
     expect(HULLS.length).toBe(12);
     expect(WEAPONS.length).toBe(20);
-    expect(HULLMODS.length).toBe(15);
+    expect(HULLMODS.filter((m) => !m.dmod).length).toBe(15);
+    expect(HULLMODS.filter((m) => m.dmod).length).toBe(6);
     for (const size of ['frigate', 'destroyer', 'cruiser', 'capital']) expect(HULLS.filter((h) => h.size === size).length).toBe(3);
     expect(validateContent()).toEqual([]);
   });

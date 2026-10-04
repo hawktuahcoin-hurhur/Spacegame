@@ -85,7 +85,10 @@ window.addEventListener('keydown', async (e) => {
   if (save) void launch(() => game.loadSave(save, progress));
 });
 
-if (params.has('new')) void launch(() => game.newGame(defaultSeed, progress));
+if (params.has('battle')) {
+  // Phase 4 demo: straight into a five-on-five fleet battle.
+  void launch(() => game.newGame(defaultSeed, progress)).then(() => game.debug.battle());
+} else if (params.has('new')) void launch(() => game.newGame(defaultSeed, progress));
 else {
   loading.classList.add('done');
   void menu.showTitle(defaultSeed);

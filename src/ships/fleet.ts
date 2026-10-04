@@ -6,7 +6,14 @@ export interface ShipInstance {
   id: string;
   name: string;
   loadout: Loadout;
+  /** Hull integrity carried between battles (0..1, default 1). Repaired at stations. */
+  hull?: number;
+  /** Combat readiness (0..1, default 0.7). Spent deploying into battle, restored over time and by repairs. */
+  cr?: number;
 }
+
+/** Peak combat readiness. */
+export const MAX_CR = 0.7;
 
 export interface Fleet {
   ships: ShipInstance[];
@@ -27,8 +34,8 @@ const NAMES: Record<ShipStyle, string[]> = {
 };
 
 /** A flavourful, unused ship name for a hull's faction style. */
-export function shipName(hullId: string, rng: Rng, taken: Set<string> = new Set()): string {
-  const style = hull(hullId).style;
+export function shipName(hullId: string, rng: Rng, taken: Set<string> = new Set(), styleOverride?: ShipStyle): string {
+  const style = styleOverride ?? hull(hullId).style;
   for (let i = 0; i < 30; i++) {
     const base = rng.pick(NAMES[style]);
     const name = PREFIX[style] ? `${PREFIX[style]} ${base}` : base;

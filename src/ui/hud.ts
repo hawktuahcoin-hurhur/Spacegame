@@ -193,7 +193,12 @@ export class Hud {
       <div><kbd>M</kbd>System map · <kbd>N</kbd>Galaxy map</div>
       <div><kbd>R</kbd>Dock at station · <kbd>F</kbd>Fleet & refit · <kbd>C</kbd>Camera</div>
       <div><kbd>F5</kbd>Quicksave · <kbd>F9</kbd>Quickload · <kbd>Esc</kbd>Menu</div>
-      <div><kbd>F3</kbd>Stats · <kbd>F4</kbd>Quality · <kbd>F6</kbd>Mute · <kbd>H</kbd>Help</div>`;
+      <div><kbd>F3</kbd>Stats · <kbd>F4</kbd>Quality · <kbd>F6</kbd>Mute · <kbd>H</kbd>Help</div>
+      <h4>COMBAT</h4>
+      <div><kbd>LMB</kbd>Fire group · <kbd>RMB</kbd>Shields · <kbd>1</kbd>–<kbd>5</kbd>Select group</div>
+      <div><kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd>Autofire · <kbd>F</kbd>Ship system · <kbd>V</kbd>Vent flux</div>
+      <div><kbd>T</kbd>Target under crosshair · <kbd>R</kbd>Cycle targets · <kbd>Tab</kbd>Tactical</div>
+      <div><kbd>J</kbd>Disengage (once out of mass-lock range)</div>`;
 
     this.prompt = el('div', 'prompt', this.root);
     this.prompt.textContent = 'Click to take the helm';

@@ -145,6 +145,8 @@ export interface HullmodDef {
   requires?: 'shield' | 'omniShield' | 'missileSlot';
   notSizes?: HullSize[];
   incompatible?: string[];
+  /** Permanent damage from being disabled and recovered: free, can't be removed in a refit. */
+  dmod?: boolean;
 }
 
 export const HULLS = hullsJson as unknown as HullDef[];

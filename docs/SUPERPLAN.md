@@ -309,7 +309,7 @@ Each phase ends with a **playable build** and a demo goal.
 - **Saves v2**: the fleet and credits are persisted. v1 saves migrate to a starter fleet, and unknown hulls, weapons or mods from changed content are dropped instead of failing the load.
 - **Dev**: `?gallery=1` (or `?gallery=kestrel,dominion`) renders every hull's stock loadout for eyeballing the builder.
 
-### Phase 4 — Combat (Weeks 9–13)  ⚠ highest-risk phase
+### Phase 4 — Combat (Weeks 9–13)  ✅ *done*
 - Weapons/projectiles/beams/missiles with pooling
 - Flux, shields, armor grid, hull, overloads, venting
 - Player flagship control + weapon groups
@@ -317,6 +317,84 @@ Each phase ends with a **playable build** and a demo goal.
 - Tactical pause overlay & orders
 - Encounters (pirates), post-combat salvage & recovery
 - **Demo**: 5v5 fleet battle with tactical orders that feels good.
+
+**As built:**
+- **Simulation** (`src/combat/sim.ts`, pure, deterministic per seed and ship ids, runs whole battles headless in tests):
+  - Arena space is metres around the point where the fight started, pinned to the player's reference frame for the duration.
+  - Pooled projectiles are swept as segments against oriented hit ellipsoids (hull and shield) sized from the built model.
+  - Hitscan beams.
+  - Guided and unguided missiles with hit points, which point defence and flak can shoot down. Sabot pods split into kinetic darts on approach; flares decoy guided missiles.
+  - Ship-to-ship collisions.
+  - Retreat off the arena edge.
+- **Damage model** (`src/combat/damage.ts`):
+  - Kinetic/HE/energy/frag multipliers against shields, armour and missiles.
+  - A Starsector-style armour grid: per-hull-size cells around the perimeter. Each hit is reduced by `hit/(hit+armour)` (15% floor, 5% residual armour) and strips its cell and its neighbours. Beams use their per-second strength for the reduction.
+- **Flux and defence:**
+  - Soft flux from weapons and shield upkeep; hard flux from shield hits, which only drains with shields down.
+  - Overloads scale with hull size.
+  - Active venting.
+  - Shields: omni or front, with arc, efficiency and unfold time. Omni shields track threats (AI) or the crosshair (player).
+  - Zero-flux speed boost.
+  - Combat readiness (CR) penalties below 40%: speed, rate of fire, malfunctions.
+- **Ship systems** (`src/combat/systems.ts`): all 11 hull systems, each a stat modifier set plus optional action.
+  - Burn Drive, Plasma Burn, Emergency Burn and Maneuvering Jets.
+  - Phase Skimmer dash.
+  - Flare Launcher.
+  - Missile Autoloader.
+  - Damper Field and Fortress Shield.
+  - High Energy Focus and Temporal Shell.
+- **AI** (`src/combat/ai.ts`):
+  - **Per-ship behaviour tree, re-evaluated about 8×/s.** Priorities, in order: overloaded/venting evasion, retreat, venting when safe, move/hold/escort orders, backing off when hot or under heavy fire, then engaging. Engaging means range-keeping at preferred range, orbiting, best-firepower bearing, fleet cohesion while closing, and no lone burn-ins.
+  - **Per-tick fire control:**
+    - Point defence picks the most dangerous missile.
+    - Leads targets with intercept solves.
+    - Holds HE and frag against facing shields.
+    - Saves missiles for overloads and openings.
+  - **Shield AI:** shields up for incoming fire, down to bleed hard flux, and it takes hits on healthy armour rather than overloading.
+  - **Fleet commander per side:** focus-fire target allocation (value, weakness, overloads, the player's target), and the AI fleet breaks and runs once its strength collapses.
+- **Player control:**
+  - The flagship flies on the normal flight model, with system/CR/zero-flux limits applied and no boost.
+  - Weapon groups: main guns, missiles and point defence by default. Select with 1–5, Shift+# for autofire.
+  - LMB fire, RMB shields, F system, V vent, T/R targeting.
+  - Lead indicator.
+  - Mass lock within 8 km of hostiles; supercruise out to disengage.
+  - If the flagship is disabled, command transfers to the strongest surviving ship.
+- **Rendering** (`src/combat/render.ts`, `fxShaders.ts`):
+  - Instanced camera-facing streaks for bolts, beams, sparks, trails and lightning, never thinner than about 1.5 px.
+  - Instanced billboards for glows, noise fireballs, shock rings and smoke.
+  - Arc-masked fresnel shield shells with a hex lattice and impact ripples.
+  - Instanced tumbling debris.
+  - Wrecks darken and burn.
+  - Damage smoke, overload arcs and vent vapour.
+  - Camera shake from nearby deaths and slow motion on the decisive kill.
+- **Audio:** synthesised positional one-shots for each weapon family, impacts, explosions, overload and vent, with a per-frame voice cap.
+- **UI:**
+  - **Combat HUD** (`ui/combatHud.ts`):
+    - Hull, armour and flux panel with a hard-flux overlay, plus shield, system and CR tags.
+    - Weapon groups with ammo and cooldowns.
+    - Target panel.
+    - Brackets with hull and flux bars over every ship.
+    - Fleet roster with AI states.
+    - Floating damage numbers.
+  - **Tactical view** (`ui/tactical.ts`, Tab):
+    - Paused top-down map with ships, shield arcs, projectiles, missiles and range rings.
+    - Click and box selection.
+    - Right-click move, attack or escort; hold, retreat, clear and full-assault buttons.
+  - **Aftermath screen** (`ui/aftermath.ts`): losses, salvage, recoverable hulls with costs and d-mods, and top performers.
+- **Encounters** (`src/combat/encounters.ts`, `session.ts`):
+  - Pirate interdictions in supercruise. Frequency scales with region danger, with a cooldown, and never near stations. There is a 5 s warning before the forced drop.
+  - Pirate fleets are sized against the player's fleet strength and system danger. They use pirate hulls plus captured hulls carrying d-mods.
+  - Salvage: credits, fuel and supplies.
+  - Recovery of disabled hulls (yours or theirs) with d-mods.
+  - Survivors keep hull damage and spend deployment CR.
+  - Defeat: picked up by a salvage tug with a battered frigate.
+- **Persistence and services:**
+  - Saves store per-ship hull and CR.
+  - 6 d-mods (`dmod: true` hullmods, free, unremovable in refit).
+  - CR +15% and hull +4% per hyperspace day.
+  - Station services: repair and recommission, restore hull (strip d-mods), and a risk-free **combat simulator**.
+  - Saving is blocked mid-battle.
+- **Demo:** `?battle=1` (or `game.debug.battle()`) starts a 5v5: Vanguard, Harrier, Lumen, Kestrel and Wisp against a Corsair, Bastion, two Jackals and a Harrier.
 
 ### Phase 5 — Economy Core (Weeks 14–17)
 - Commodities, markets, industries, daily production tick in worker

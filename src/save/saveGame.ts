@@ -1,6 +1,6 @@
 import { type PlayerState, refreshLogistics } from '../player';
 import { type Loadout, hasHull, hasHullmod, hasWeapon, hull } from '../ships/defs';
-import { type Fleet, STARTING_CREDITS, starterFleet } from '../ships/fleet';
+import { type Fleet, MAX_CR, STARTING_CREDITS, starterFleet } from '../ships/fleet';
 
 export const SAVE_VERSION = 2;
 
@@ -78,9 +78,14 @@ function parseFleet(raw: unknown): Fleet {
   const f = raw as { ships?: unknown; flagshipId?: unknown } | null;
   const ships: Fleet['ships'] = [];
   if (f && Array.isArray(f.ships)) {
-    for (const s of f.ships as { id?: unknown; name?: unknown; loadout?: unknown }[]) {
+    for (const s of f.ships as { id?: unknown; name?: unknown; loadout?: unknown; hull?: unknown; cr?: unknown }[]) {
       const loadout = sanitizeLoadout(s?.loadout);
-      if (loadout && typeof s.id === 'string') ships.push({ id: s.id, name: typeof s.name === 'string' ? s.name : 'Unnamed', loadout });
+      if (!loadout || typeof s.id !== 'string') continue;
+      const ship: Fleet['ships'][number] = { id: s.id, name: typeof s.name === 'string' ? s.name : 'Unnamed', loadout };
+      // Battle damage and readiness (Phase 4); absent in older saves means pristine.
+      if (typeof s.hull === 'number' && Number.isFinite(s.hull)) ship.hull = Math.min(1, Math.max(0.05, s.hull));
+      if (typeof s.cr === 'number' && Number.isFinite(s.cr)) ship.cr = Math.min(MAX_CR, Math.max(0, s.cr));
+      ships.push(ship);
     }
   }
   if (ships.length === 0) return starterFleet();

@@ -18,7 +18,7 @@ import {
   hullmodIncompatibility,
   opUsed,
 } from '../ships/fitting';
-import { MAX_FLEET_SIZE, RESALE_FACTOR, type ShipInstance, createShip, fleetLogistics, shipName } from '../ships/fleet';
+import { MAX_CR, MAX_FLEET_SIZE, RESALE_FACTOR, type ShipInstance, createShip, fleetLogistics, shipName } from '../ships/fleet';
 import { type ShipVisual, buildShip } from '../ships/shipBuilder';
 
 export type FleetTab = 'fleet' | 'shipyard' | 'services';
@@ -35,6 +35,8 @@ export interface FleetScreenHost {
   /** Called after any change to the fleet (refit, purchase, flagship…). */
   fleetChanged(): void;
   refuel(): void;
+  /** Launch a no-risk combat simulation against a pirate fleet. */
+  simulate(): void;
   toast(msg: string, kind?: '' | 'warn' | 'good'): void;
   close(): void;
 }
@@ -50,6 +52,33 @@ const TYPE_COLOR: Record<string, string> = {
 };
 const DMG_LABEL: Record<string, string> = { kinetic: 'Kinetic', he: 'High explosive', energy: 'Energy', frag: 'Fragmentation' };
 const credits = (n: number) => `¢${Math.round(n).toLocaleString()}`;
+
+const isDmod = (id: string) => !!HULLMODS.find((m) => m.id === id)?.dmod;
+
+/** Credits to bring every ship back to full hull and peak readiness. */
+export function repairCost(ships: ShipInstance[]): number {
+  let c = 0;
+  for (const s of ships) {
+    const h = hullDef(s.loadout.hullId);
+    c += (1 - (s.hull ?? 1)) * h.cost * 0.12 + Math.max(0, MAX_CR - (s.cr ?? MAX_CR)) * h.cost * 0.06;
+  }
+  return Math.round(c / 50) * 50;
+}
+
+/** Credits to strip every d-mod from a hull. */
+export function restoreCost(s: ShipInstance): number {
+  const n = s.loadout.hullmods.filter((m) => isDmod(m)).length;
+  return Math.round((hullDef(s.loadout.hullId).cost * 0.18 * n) / 100) * 100;
+}
+
+/** Hull and readiness bars for a fleet card. */
+function shipCondition(s: ShipInstance): string {
+  const hull = s.hull ?? 1;
+  const cr = s.cr ?? MAX_CR;
+  const dm = s.loadout.hullmods.filter((m) => isDmod(m)).length;
+  return `<div class="fs-cond"><span class="hb" title="Hull integrity"><i style="width:${hull * 100}%"></i></span><em>HULL ${Math.round(hull * 100)}%</em>
+    <span class="cb" title="Combat readiness"><i style="width:${(cr / MAX_CR) * 100}%"></i></span><em class="${cr < 0.4 ? 'bad' : ''}">CR ${Math.round(cr * 100)}%</em>${dm ? `<b>${dm} D-MOD${dm > 1 ? 'S' : ''}</b>` : ''}</div>`;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, html?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -293,6 +322,7 @@ export class FleetScreen {
             <div class="h">${h.name} · ${h.designation}</div>
             <div class="op"><div style="width:${((st.opUsed / st.opMax) * 100).toFixed(0)}%"></div></div>
             <div class="mini"><span>${st.opUsed}/${st.opMax} OP</span><span>${Math.round(st.dps.total)} DPS</span></div>
+            ${shipCondition(s)}
           </div>`;
         })
         .join('')}</div>
@@ -322,7 +352,8 @@ export class FleetScreen {
     const h = hullDef(ship.loadout.hullId);
     const isFlag = ship.id === this.player.fleet.flagshipId;
     const dock = this.host.dock;
-    const resale = Math.round(h.cost * RESALE_FACTOR);
+    const dmods = ship.loadout.hullmods.filter((m) => isDmod(m)).length;
+    const resale = Math.round(h.cost * RESALE_FACTOR * Math.max(0.4, 1 - dmods * 0.12));
     const lock = this.canEdit ? '' : '<div class="fs-lock">Viewing only — dock at a station to refit</div>';
     this.bottom.innerHTML = `
       <div class="fs-shiphead">
@@ -365,12 +396,15 @@ export class FleetScreen {
       this.host.toast('Autofit complete');
       this.commit();
     });
+    // D-mods are part of the hull, not the fit: they survive stock and strip.
+    const dm = ship.loadout.hullmods.filter((m) => isDmod(m));
     act('stock', () => {
-      ship.loadout = defaultLoadout(h.id);
+      const l = defaultLoadout(h.id);
+      ship.loadout = { ...l, hullmods: [...l.hullmods, ...dm] };
       this.commit();
     });
     act('strip', () => {
-      ship.loadout = emptyLoadout(h.id);
+      ship.loadout = { ...emptyLoadout(h.id), hullmods: [...dm] };
       this.commit();
     });
     act('flag', () => {
@@ -451,7 +485,11 @@ export class FleetScreen {
   private renderHullmods(body: HTMLDivElement, ship: ShipInstance): void {
     const h = hullDef(ship.loadout.hullId);
     const free = h.ordnancePoints - opUsed(ship.loadout);
-    const cards = HULLMODS.map((m) => {
+    const installedDmods = HULLMODS.filter((m) => m.dmod && ship.loadout.hullmods.includes(m.id));
+    const dmodCards = installedDmods
+      .map((m) => `<button class="fs-mod on dmod" disabled><div class="mn">${m.name}<span>D-MOD</span></div><div class="md">${m.description}</div><div class="mw">Permanent damage — restore the hull at a shipyard</div></button>`)
+      .join('');
+    const cards = dmodCards + HULLMODS.filter((m) => !m.dmod).map((m) => {
       const builtIn = h.builtInMods.includes(m.id);
       const on = builtIn || ship.loadout.hullmods.includes(m.id);
       const why = builtIn ? null : hullmodIncompatibility(m, h, ship.loadout.hullmods.filter((x) => x !== m.id));
@@ -626,17 +664,57 @@ export class FleetScreen {
     const flag = this.player.fleet.ships.find((s) => s.id === this.player.fleet.flagshipId)!;
     this.view.setLoadout(flag.loadout);
     this.renderStats(computeStats(flag.loadout));
-    this.left.innerHTML = `<h3>Station services</h3><p class="fs-note">Markets, missions and crew hiring open in a later update. Docking crews will top you up for free in the meantime.</p>`;
+    const repair = repairCost(p.fleet.ships);
+    const damaged = p.fleet.ships.filter((x) => x.loadout.hullmods.some((m) => isDmod(m)));
+    this.left.innerHTML = `<h3>Station services</h3>
+      <p class="fs-note">Markets, missions and crew hiring open in a later update. Docking crews top up fuel and supplies for free in the meantime.</p>
+      <h3>Fleet condition</h3>
+      <div class="fs-roster">${p.fleet.ships
+        .map((x) => `<div class="fs-card static"><div class="n">${x.name}</div><div class="h">${hullDef(x.loadout.hullId).name}</div>${shipCondition(x)}</div>`)
+        .join('')}</div>`;
     const needFuel = p.fuelCapacity - p.fuel;
     const needSup = p.suppliesCapacity - p.supplies;
     this.bottom.innerHTML = `<div class="fs-services">
       <div class="svc"><div class="sn">Fuel</div><div class="bar fuel"><div style="width:${(p.fuel / p.fuelCapacity) * 100}%"></div></div><div class="sv">${Math.round(p.fuel)} / ${p.fuelCapacity} t</div></div>
       <div class="svc"><div class="sn">Supplies</div><div class="bar sup"><div style="width:${(p.supplies / p.suppliesCapacity) * 100}%"></div></div><div class="sv">${Math.round(p.supplies)} / ${p.suppliesCapacity}</div></div>
-      <button class="primary" data-act="refuel" ${needFuel < 0.05 && needSup < 0.05 ? 'disabled' : ''}>${needFuel < 0.05 && needSup < 0.05 ? 'Tanks and holds full' : 'Refuel & resupply'}</button></div>`;
+      <div class="svc-buttons">
+        <button class="primary" data-act="refuel" ${needFuel < 0.05 && needSup < 0.05 ? 'disabled' : ''}>${needFuel < 0.05 && needSup < 0.05 ? 'Tanks and holds full' : 'Refuel & resupply'}</button>
+        <button class="primary" data-act="repair" ${repair <= 0 || p.credits < repair ? 'disabled' : ''} title="Restore hull integrity and combat readiness">${repair <= 0 ? 'Fleet fully repaired' : `Repair & recommission ${credits(repair)}`}</button>
+        <button data-act="sim" title="Fight a simulated pirate fleet: no losses, no rewards">Combat simulator</button>
+      </div>
+      ${damaged.length ? `<div class="svc-dmods">${damaged
+        .map((x) => {
+          const n = x.loadout.hullmods.filter((m) => isDmod(m)).length;
+          const cost = restoreCost(x);
+          return `<div><span>${x.name} <small>${n} d-mod${n > 1 ? 's' : ''}</small></span><button data-restore="${x.id}" ${p.credits < cost ? 'disabled' : ''}>Restore hull ${credits(cost)}</button></div>`;
+        })
+        .join('')}</div>` : ''}
+    </div>`;
     this.bottom.querySelector('[data-act=refuel]')?.addEventListener('click', () => {
       this.host.refuel();
       this.refresh();
     });
+    this.bottom.querySelector('[data-act=repair]')?.addEventListener('click', () => {
+      p.credits -= repair;
+      for (const x of p.fleet.ships) {
+        x.hull = 1;
+        x.cr = MAX_CR;
+      }
+      this.host.toast(`Fleet repaired and recommissioned for ${credits(repair)}`, 'good');
+      this.commit();
+    });
+    this.bottom.querySelector('[data-act=sim]')?.addEventListener('click', () => this.host.simulate());
+    this.bottom.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const x = p.fleet.ships.find((y) => y.id === b.dataset.restore);
+        if (!x) return;
+        const cost = restoreCost(x);
+        p.credits -= cost;
+        x.loadout = { ...x.loadout, hullmods: x.loadout.hullmods.filter((m) => !isDmod(m)) };
+        this.host.toast(`${x.name} restored to factory condition`, 'good');
+        this.commit();
+      }),
+    );
   }
 
   // ------------------------------------------------------------ slot markers

@@ -2,7 +2,10 @@
 
 A 3D space exploration & commerce sim in Three.js: No Man's Sky-style procedural exploration meets Starsector-style fleets, fitting and a living faction economy.
 
-See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–3 are playable:** a procedural galaxy of about 670 star systems you can chart and jump between, plus a fleet of procedurally built ships you can buy, refit and fly in formation.
+See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–4 are playable:**
+- a procedural galaxy of about 670 star systems you can chart and jump between,
+- a fleet of procedurally built ships you can buy, refit and fly in formation,
+- real-time fleet battles against pirates, with a tactical command view, salvage and recovery.
 
 ## Run
 You need **Node.js 20.19+ or 22.12+**. Check with `node -v`, and get the LTS from [nodejs.org](https://nodejs.org) if yours is older.
@@ -22,7 +25,11 @@ Other commands: `npm test` (unit tests), `npm run build` (typecheck + production
 - **`Missing script: "dev"` or `ENOENT … package.json`:** you're in the wrong folder or on a branch without the game. `cd` into the project and check out the branch above.
 - **Syntax errors from inside `node_modules`:** your Node.js is too old. Upgrade it, then delete `node_modules` and run `npm install` again.
 
-URL options: `?galaxy=1337` pre-fills the galaxy seed on the title screen, `?new=1` skips the title and starts a new expedition, and `?q=low|medium|high` sets the graphics quality (cycle in-game with **F4**).
+URL options:
+- `?galaxy=1337` pre-fills the galaxy seed on the title screen.
+- `?new=1` skips the title and starts a new expedition.
+- `?battle=1` drops you straight into the five-on-five demo battle.
+- `?q=low|medium|high` sets the graphics quality (cycle in-game with **F4**).
 
 ## Controls
 | Key | Action |
@@ -46,6 +53,20 @@ URL options: `?galaxy=1337` pre-fills the galaxy seed on the title screen, `?new
 | Esc | Pause menu (save, load, settings) |
 | H, F3, F4, F6 | Help, FPS, graphics quality, mute |
 
+**In combat** the flight controls stay the same (boost is off), plus:
+
+| Key | Action |
+|---|---|
+| Left mouse | Fire the selected weapon group at the crosshair |
+| Right mouse | Raise / lower shields (omni shields face the crosshair) |
+| 1–5 | Select weapon group (main guns, missiles, point defence) |
+| Shift + 1–5 | Toggle autofire for a group |
+| F | Ship system (Burn Drive, Damper Field, Phase Skimmer…) |
+| V | Vent flux: dump it fast, defenceless while venting |
+| T / R | Target the enemy under the crosshair / cycle by distance |
+| Tab | Tactical view: pause and give your fleet orders |
+| J | Disengage into supercruise, once no hostile is within 8 km |
+
 Prefer the old virtual-joystick steering, inverted Y or a different mouse sensitivity? Change them under **Esc → Settings**; they're remembered per browser.
 
 **Travelling between stars:**
@@ -65,6 +86,31 @@ Bigger fleets carry more fuel and cargo but burn more per jump, and they jump on
 
 **Running low on fuel?** Skim a star's corona to scoop, or press **R** at any station.
 
+**Fighting:**
+- **Interdiction.** Pirates haunt frontier and fringe systems. In supercruise they may interdict you: a 5 s warning, then you're pulled out with them about 4 km ahead. Space near stations is patrolled and safe.
+- **Flux is everything.**
+  - Firing builds soft flux.
+  - Damage your shield blocks becomes hard flux, which only drains with shields down.
+  - At full flux you overload: shields and weapons go offline for a few seconds.
+  - Back off, drop shields, or press **V** to vent.
+- **Damage types.**
+  - Kinetic breaks shields.
+  - High explosive cracks armour.
+  - Energy is all-round.
+  - Frag shreds bare hull and missiles.
+  - Armour is a grid around the hull, so keep hitting the side you've already stripped.
+- **Tactical view (Tab).**
+  - Pauses the battle.
+  - Select ships, or drag to box-select.
+  - Right-click empty space to **move**, an enemy to **attack**, or a friend to **escort**.
+  - **H** holds position, **X** retreats, **C** clears orders.
+- **Losing your flagship.** If it's disabled, you take command of your strongest surviving ship.
+- **After a win.**
+  - You salvage credits, fuel and supplies.
+  - You can recover disabled hulls, both yours and theirs. They come back battered, with permanent **d-mods**.
+  - Survivors keep their hull damage and lose some combat readiness (CR). CR recovers a little each jump.
+  - At a station, **Services** offers full repairs, d-mod restoration, and a **combat simulator** for testing fits risk-free.
+
 **Inside a system:** supercruise speed scales with your distance from the nearest surface, so you slow down automatically as you approach. With a target set, the ship drops out on arrival.
 
 ## Debugging
@@ -78,4 +124,7 @@ game.debug.state()                                           // system, fuel, ro
 game.debug.neighbours()                                      // systems within jump range
 game.debug.plot('Haitrex'); game.debug.alignToSystem()       // then press J
 game.debug.warp(42)                                          // arrive instantly in system #42
+game.debug.fight(1.2)                                        // pirates at 1.2× your fleet strength
+game.debug.battle()                                          // the 5v5 demo battle
+game.debug.spectate("Widow's Grin", [300, 150, 300])         // watch a combat ship; spectate() returns to chase
 ```

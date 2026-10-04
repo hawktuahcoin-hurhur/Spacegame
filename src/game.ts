@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { AudioEngine } from './audio/audio';
+import { type BattleReport, type EnemyFleet, applyReport, fleetStrength, pirateFleet, systemDanger } from './combat/encounters';
+import { yawOf } from './combat/geometry';
+import { CombatSession, EncounterDirector } from './combat/session';
+import type { CombatShip } from './combat/ship';
+import type { CombatEvent } from './combat/sim';
 import { GameLoop } from './core/loop';
 import { Input } from './core/input';
 import { type GalaxyDef, type GalaxyStar, starDistance } from './galaxy/galaxyGen';
@@ -14,11 +19,15 @@ import { QUALITY, RenderPipeline } from './render/pipeline';
 import { SpaceDust } from './render/spaceDust';
 import { SAVE_VERSION, type SaveData, playerFromSave } from './save/saveGame';
 import { SaveStorage, type SlotId } from './save/storage';
-import { type Controls, type FlightEnv, ShipController, flightStatsFor } from './ships/flight';
+import { type Controls, type FlightEnv, type FlightStats, ShipController, flightStatsFor } from './ships/flight';
 import { type ShipVisual, buildShip } from './ships/shipBuilder';
 import { EscortFormation } from './ships/escorts';
 import { computeStats } from './ships/fitting';
-import { flagship } from './ships/fleet';
+import { MAX_CR, MAX_FLEET_SIZE, createShip, flagship } from './ships/fleet';
+import { Rng } from './core/rng';
+import { AftermathScreen } from './ui/aftermath';
+import { CombatHud } from './ui/combatHud';
+import { TacticalView } from './ui/tactical';
 import { SimClient } from './sim/simClient';
 import { type Settings, loadSettings, saveSettings } from './settings';
 import { formatDistance, formatDuration, formatSpeed } from './ui/format';
@@ -104,6 +113,23 @@ export class Game {
   readonly storage = new SaveStorage();
   readonly tunnel = new HyperspaceTunnel();
   readonly fleetScreen: FleetScreen;
+  readonly combatHud: CombatHud;
+  readonly tactical: TacticalView;
+  readonly aftermath = new AftermathScreen();
+  readonly encounters = new EncounterDirector();
+  /** The battle in progress, if any (a mode of the system scene). */
+  combat: CombatSession | null = null;
+  /** Flagship flight stats before combat modifiers (systems, readiness). */
+  private baseFlight: FlightStats = flightStatsFor({ maxSpeed: 260, accel: 95, turnRate: 70 });
+  /** Where the player is aiming in arena space (turrets, omni shield, missiles). */
+  private readonly combatAim = new THREE.Vector3();
+  private combatAimValid = false;
+  /** The combat ship the flight model is attached to (follows its wreck if it dies). */
+  private combatAvatar: CombatShip | null = null;
+  private readonly listener = { pos: new THREE.Vector3(), right: new THREE.Vector3(1, 0, 0) };
+  private readonly encounterRng = new Rng(4242);
+  /** Debug/QA: watch a combat ship from a fixed offset instead of the chase camera. */
+  private spectate: { ship: CombatShip; offset: THREE.Vector3 } | null = null;
 
   galaxy!: GalaxyDef;
   galaxyMap!: GalaxyMap;
@@ -171,9 +197,17 @@ export class Game {
         void this.saveTo('auto');
       },
       refuel: () => this.resupply(),
+      simulate: () => this.startSimulation(),
       toast: (m, k) => this.hud.toast(m, k),
       close: () => this.toggleFleetScreen(),
     });
+    this.combatHud = new CombatHud(document.body);
+    this.tactical = new TacticalView(document.body);
+    this.tactical.onClose = () => this.toggleTactical();
+    this.tactical.onOrder = (t) => {
+      this.hud.toast(t);
+      this.audio.blip(700, 0.05);
+    };
 
     document.addEventListener('pointerlockchange', () => {
       // Losing the pointer mid-flight (Esc) opens the pause menu.
@@ -211,7 +245,7 @@ export class Game {
   }
 
   get anyMapOpen(): boolean {
-    return !!(this.map?.open || this.galaxyMap?.open || this.fleetScreen?.open);
+    return !!(this.map?.open || this.galaxyMap?.open || this.fleetScreen?.open || this.tactical?.open || this.aftermath?.open);
   }
 
   /** Station services available right now (docked = within reach of a station, slow, normal flight). */
@@ -258,6 +292,7 @@ export class Game {
 
   /** Swap a built system in, disposing the previous one. */
   private swapIn(b: BuiltSystem): void {
+    this.abortCombat();
     this.view?.dispose();
     this.map?.dispose();
     this.scene = b.scene;
@@ -271,6 +306,8 @@ export class Game {
   }
 
   async newGame(seed: number, onProgress: (f: number, label: string) => void): Promise<void> {
+    this.abortCombat();
+    this.encounters.reset(240);
     onProgress(0, 'Mapping the galaxy');
     await this.loadGalaxy(seed);
     this.player = newPlayer();
@@ -283,6 +320,8 @@ export class Game {
   }
 
   async loadSave(save: SaveData, onProgress: (f: number, label: string) => void): Promise<void> {
+    this.abortCombat();
+    this.encounters.reset(180);
     this.jump = null;
     onProgress(0, 'Mapping the galaxy');
     await this.loadGalaxy(save.galaxySeed);
@@ -482,12 +521,13 @@ export class Game {
       }
       this.shipVisual = buildShip(flag.loadout);
       parent?.add(this.shipVisual.root);
-      this.ship.stats = flightStatsFor(computeStats(flag.loadout));
+      this.baseFlight = flightStatsFor(computeStats(flag.loadout));
+      this.ship.stats = { ...this.baseFlight };
       // The starter frigate's bounding radius is ~13 m; scale the chase camera from it.
       this.chase.scale = Math.max(1, this.shipVisual.radius / 13);
     }
     const others = this.player.fleet.ships.filter((x) => x.id !== flag.id);
-    this.escorts.sync(others, this.shipVisual.radius, this.ship.quaternion);
+    if (!this.combat) this.escorts.sync(others, this.shipVisual.radius, this.ship.quaternion);
     refreshLogistics(this.player);
   }
 
@@ -505,7 +545,8 @@ export class Game {
   private steerAim(dt: number, dx: number, dy: number): void {
     const sens = 0.0016 * this.settings.sensitivity;
     const inv = this.settings.invertY ? -1 : 1;
-    const freeLook = this.input.isMouseDown(2) && !this.anyMapOpen;
+    // In combat the right button raises shields instead.
+    const freeLook = this.input.isMouseDown(2) && !this.anyMapOpen && !this.combat;
     const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * sens);
     const pitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -dy * sens * inv);
     if (freeLook) {
@@ -567,6 +608,10 @@ export class Game {
 
   async saveTo(slot: SlotId): Promise<void> {
     if (!this.galaxy || this.jump) return;
+    if (this.combat) {
+      if (slot !== 'auto') this.hud.toast("Can't save during combat", 'warn');
+      return;
+    }
     await this.storage.write(slot, this.snapshot());
     if (slot !== 'auto') this.hud.toast(slot === 'quick' ? 'Quicksaved' : 'Game saved', 'good');
   }
@@ -660,6 +705,7 @@ export class Game {
   }
 
   private massLock(world: THREE.Vector3): string | null {
+    if (this.combat && this.combat.massLocked(this.playerArena(new THREE.Vector3()))) return 'Mass locked — hostile ships nearby';
     for (const a of this.universe.anchors) {
       const alt = world.distanceTo(a.position) - a.radius;
       if (alt < lockAltitude(a)) return a.kind === 'station' ? `Mass locked — ${a.name}` : `Mass locked — ${a.name} gravity well`;
@@ -774,6 +820,11 @@ export class Game {
     this.player.fuel -= this.jumpFuel(here, dest);
     this.player.supplies -= this.player.suppliesPerJump;
     this.time += JUMP_DURATION_DAYS * SECONDS_PER_DAY;
+    // A day in hyperspace: crews recover readiness and patch up a little hull.
+    for (const ship of this.player.fleet.ships) {
+      ship.cr = Math.min(MAX_CR, (ship.cr ?? MAX_CR) + 0.15 * JUMP_DURATION_DAYS);
+      if (ship.hull !== undefined) ship.hull = Math.min(1, ship.hull + 0.04 * JUMP_DURATION_DAYS);
+    }
     this.ship.dropOut('Entering hyperspace');
     this.ship.autoAlign = false;
     if (this.map.open) this.toggleMap();
@@ -810,6 +861,11 @@ export class Game {
 
   private fixedUpdate(dt: number): void {
     if (this.paused || !this.universe) return;
+    const cb = this.combat;
+    if (cb) {
+      if (cb.state === 'report' || (this.tactical.open && this.tactical.paused)) return;
+      dt *= cb.timeScale;
+    }
     if (this.jump) this.updateJump(dt);
     if (this.inTunnel) return;
     this.time += dt;
@@ -824,7 +880,7 @@ export class Game {
       roll: this.mouseAim ? 0 : i.axis('KeyE', 'KeyQ'),
       mouseDX: this.pendingMouse.dx,
       mouseDY: this.pendingMouse.dy,
-      boost: i.isDown('ShiftLeft') || i.isDown('ShiftRight'),
+      boost: !cb && (i.isDown('ShiftLeft') || i.isDown('ShiftRight')),
       zeroThrottle: this.pendingZero,
       toggleSupercruise: this.pendingToggleSC,
       aim: this.mouseAim ? this.aim : null,
@@ -833,10 +889,14 @@ export class Game {
     this.pendingToggleSC = false;
     this.pendingZero = false;
     if (this.anyMapOpen) c.mouseDX = c.mouseDY = 0;
+    if (cb) this.applyCombatFlight(c);
     const disp = this.ship.update(dt, c, env, _v);
     this.local.add(disp);
-    this.updateFrame();
+    // The arena is pinned to one reference frame for the whole battle.
+    if (!cb) this.updateFrame();
     this.collide();
+    if (cb) this.combatStep(dt);
+    else this.updateEncounters(dt);
 
     // Fuel scooping in the star's corona.
     const star = this.universe.star;
@@ -913,8 +973,12 @@ export class Game {
 
   private handleActions(): void {
     const i = this.input;
-    if (i.pressed('KeyM') && !this.galaxyMap.open && !this.fleetScreen.open && !this.inTunnel) this.toggleMap();
-    if (i.pressed('KeyN') && !this.map.open && !this.fleetScreen.open && !this.inTunnel) this.toggleGalaxyMap();
+    if (this.aftermath.open) return;
+    if (this.combat && this.handleCombatActions()) return;
+    const cb = this.combat;
+    if (cb && (i.pressed('KeyM') || i.pressed('KeyN'))) this.hud.toast('Maps are unavailable in combat — Tab for the tactical view', 'warn');
+    if (i.pressed('KeyM') && !cb && !this.galaxyMap.open && !this.fleetScreen.open && !this.inTunnel) this.toggleMap();
+    if (i.pressed('KeyN') && !cb && !this.map.open && !this.fleetScreen.open && !this.inTunnel) this.toggleGalaxyMap();
     if (this.fleetScreen.open && (i.pressed('Escape') || i.pressed('KeyF'))) {
       this.toggleFleetScreen();
       return;
@@ -937,11 +1001,11 @@ export class Game {
       else this.pendingToggleSC = true;
     }
     if (i.pressed('KeyX')) this.pendingZero = true;
-    if (i.pressed('KeyR')) {
+    if (i.pressed('KeyR') && !cb) {
       if (this.resupplyStation()) this.toggleFleetScreen('fleet');
       else this.hud.toast('No station in reach — fly within 6 km and slow down to dock', 'warn');
     }
-    if (i.pressed('KeyF')) this.toggleFleetScreen('fleet');
+    if (i.pressed('KeyF') && !cb) this.toggleFleetScreen('fleet');
     if (i.pressed('KeyH')) this.hud.setHelp(!this.hud.helpVisible);
     if (i.pressed('F3')) this.showFps = !this.showFps;
     if (i.pressed('F4')) {
@@ -952,8 +1016,8 @@ export class Game {
       this.cameraZoomIndex = (this.cameraZoomIndex + 1) % 3;
       this.chase.zoom = [1, 1.8, 0.62][this.cameraZoomIndex];
     }
-    if (i.pressed('KeyT')) this.targetAhead();
-    if (i.pressed('BracketRight') || i.pressed('BracketLeft')) this.cycleTarget(i.pressed('BracketRight') ? 1 : -1);
+    if (i.pressed('KeyT') && !cb) this.targetAhead();
+    if ((i.pressed('BracketRight') || i.pressed('BracketLeft')) && !cb) this.cycleTarget(i.pressed('BracketRight') ? 1 : -1);
     if (i.pressed('KeyG')) {
       if (this.target || this.systemTarget) this.ship.setAutoAlign(!this.ship.autoAlign);
       else this.hud.toast('No target selected', 'warn');
@@ -1032,7 +1096,7 @@ export class Game {
     if (!this.paused) this.handleActions();
     else if (this.input.pressed('Escape')) this.onPauseRequest();
     const m = this.input.consumeMouse();
-    const free = this.input.isMouseDown(2);
+    const free = this.input.isMouseDown(2) && !this.combat;
     if (!this.paused && !this.anyMapOpen && !this.inTunnel) this.steerAim(frameDt, m.dx, m.dy);
     if (!this.mouseAim && !free) {
       this.pendingMouse.dx += m.dx * this.settings.sensitivity;
@@ -1093,12 +1157,17 @@ export class Game {
     // Camera.
     const speedFactor = THREE.MathUtils.clamp(ship.speed / (ship.stats.maxSpeed * ship.stats.boostMultiplier), 0, 1);
     const flash = ship.transitionAge < 0.6 ? 1 - ship.transitionAge / 0.6 : 0;
-    const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3;
+    const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3 + (this.combat?.renderer.shake ?? 0) * 3;
     this.lastShake += (shake - this.lastShake) * 0.2;
     this.chase.update(frameDt, this.viewQuaternion(new THREE.Quaternion()), speedFactor + scBlend, this.lastShake, this.time);
     this.camWorld.copy(world).add(this.chase.offset);
     this.camera.position.set(0, 0, 0);
     this.camera.quaternion.copy(this.chase.quaternion);
+    if (this.spectate && this.combat) {
+      const t = this.combat.arenaWorld(new THREE.Vector3()).add(this.spectate.ship.pos);
+      this.camWorld.copy(t).add(this.spectate.offset);
+      this.camera.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(this.camWorld, t, new THREE.Vector3(0, 1, 0)));
+    }
     const fov = BASE_FOV + scBlend * 14 + charging * 4 - flash * 6 * sc + jumpCharge * 10;
     this.camera.fov += (fov - this.camera.fov) * Math.min(1, frameDt * 6);
     this.camera.aspect = this.pipeline.aspect;
@@ -1120,8 +1189,11 @@ export class Game {
 
     // Turrets track wherever the camera is looking; escorts hold formation.
     const aimLocal = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).applyQuaternion(_q.copy(ship.quaternion).invert());
-    this.shipVisual.aimTurrets(aimLocal, frameDt);
-    this.escorts.update(frameDt, this.time, this.shipVisual.root.position, ship.quaternion, ship.throttle, ship.boosting, Math.max(scBlend, jumpCharge), aimLocal);
+    if (this.combat) this.renderCombat(frameDt);
+    else {
+      this.shipVisual.aimTurrets(aimLocal, frameDt);
+      this.escorts.update(frameDt, this.time, this.shipVisual.root.position, ship.quaternion, ship.throttle, ship.boosting, Math.max(scBlend, jumpCharge), aimLocal);
+    }
 
     const pixelsPerRadian = window.innerHeight / THREE.MathUtils.degToRad(this.camera.fov);
     const ctx = { origin: this.camWorld, camera: this.camera, time: this.time, dt: frameDt, pixelsPerRadian };
@@ -1140,6 +1212,8 @@ export class Game {
     });
 
     this.updateHud(world);
+    if (this.combat) this.updateCombatHud(frameDt);
+    if (this.tactical.open) this.tactical.render(frameDt);
   }
 
   private updateHud(world: THREE.Vector3): void {
@@ -1162,6 +1236,8 @@ export class Game {
     for (const a of this.universe.anchors) {
       const dist = a.position.distanceTo(this.camWorld);
       const isTarget = a === this.target;
+      // Keep the combat view clean: only the nav target stays marked.
+      if (this.combat && !isTarget) continue;
       if (!isTarget) {
         if (a.kind === 'body' && (a as BodyState).def.kind === 'moon' && a.parent !== rootPlanet && dist > 3e7) continue;
         if (a.kind === 'station' && a.parent !== rootPlanet && dist > 2e6) continue;
@@ -1303,7 +1379,10 @@ export class Game {
           ? { title: `Hyperjump in ${Math.ceil(left)}`, sub: `${this.systemTarget?.name ?? ''} · [J] cancel` }
           : { title: 'Align with destination', sub: 'The jump fires when the target is under the reticle' };
     }
-    const station = this.resupplyStation();
+    const warning = this.encounters.warning;
+    if (warning && !this.combat)
+      banner = { title: `Interdiction ${Math.max(1, Math.ceil(warning.t))}`, sub: `${warning.enemy.name} are pulling you out of supercruise` };
+    const station = this.combat ? null : this.resupplyStation();
     const prompt = station ? `[R] Dock at ${station.name}` : null;
 
     this.hud.update(
@@ -1333,6 +1412,499 @@ export class Game {
       w,
       h,
     );
+  }
+
+  // ---------------------------------------------------------------- combat
+
+  /** Player position in arena space (the arena shares the player's frame during a battle). */
+  private playerArena(out: THREE.Vector3): THREE.Vector3 {
+    return this.combat ? out.copy(this.local).sub(this.combat.origin) : out.set(0, 0, 0);
+  }
+
+  /** How dangerous the current system is. */
+  danger(): number {
+    const star = this.galaxy.stars[this.systemIndex];
+    return systemDanger(star.region, this.systemIndex === this.galaxy.startIndex);
+  }
+
+  /** Pirates interdict supercruise now and then: a warning, then a forced drop into battle. */
+  private updateEncounters(dt: number): void {
+    const d = this.encounters;
+    d.cooldown -= dt;
+    if (d.warning) {
+      d.warning.t -= dt;
+      if (Math.ceil(d.warning.t) !== Math.ceil(d.warning.t + dt)) this.audio.blip(300, 0.1);
+      if (d.warning.t <= 0) {
+        const enemy = d.warning.enemy;
+        d.warning = null;
+        this.startCombat(enemy, { interdiction: true });
+      }
+      return;
+    }
+    if (d.cooldown > 0 || this.ship.mode !== 'supercruise' || this.jump) return;
+    const world = this.shipWorld(new THREE.Vector3());
+    // Station patrols keep the space near stations safe.
+    if (this.universe.stations.some((st) => st.position.distanceTo(world) < 120_000)) return;
+    if (this.encounterRng.next() < EncounterDirector.rate(this.danger()) * dt) {
+      const enemy = pirateFleet(this.encounterRng.int(1, 1e9), fleetStrength(this.player.fleet), this.danger());
+      d.warning = { t: EncounterDirector.WARNING, enemy };
+      this.hud.toast(`Interdiction! ${enemy.name} have locked on`, 'warn');
+      this.audio.alarm();
+    }
+  }
+
+  /** Begin a battle against `enemy`, centred on the player's current position. */
+  startCombat(enemy: EnemyFleet, opts: { interdiction?: boolean; simulated?: boolean; distance?: number } = {}): void {
+    if (this.combat || !this.universe) return;
+    if (this.jump?.phase === 'charging') this.cancelJump('Jump aborted — hostile contact');
+    if (this.ship.mode !== 'normal') this.ship.dropOut(opts.interdiction ? 'Interdicted!' : 'Combat');
+    this.ship.autoAlign = false;
+    if (this.map.open) this.toggleMap();
+    if (this.galaxyMap.open) this.toggleGalaxyMap();
+    if (this.fleetScreen.open) this.toggleFleetScreen();
+    this.ship.velocity.clampLength(0, this.ship.stats.maxSpeed);
+    // The enemy comes in ahead of us, a little off the nose.
+    const fwd = this.ship.forward.clone().setY(0);
+    if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
+    fwd.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.encounterRng.range(-0.6, 0.6));
+    const cb = new CombatSession({
+      fleet: this.player.fleet,
+      enemy,
+      frame: this.frame,
+      origin: this.local,
+      playerQuat: this.ship.quaternion,
+      enemyDir: fwd,
+      distance: opts.distance ?? this.encounterRng.range(3200, 4200),
+      simulated: !!opts.simulated,
+      seed: this.encounterRng.int(1, 1e9),
+    });
+    this.combat = cb;
+    this.combatAvatar = cb.player;
+    if (cb.player) cb.renderer.attachPlayerVisual(cb.player, this.shipVisual);
+    cb.renderer.onEvent = (e) => this.onCombatEvent(e);
+    this.scene.add(cb.renderer.group);
+    this.escorts.group.visible = false;
+    this.hud.root.classList.add('in-combat');
+    this.combatHud.setVisible(true);
+    this.cameraZoomIndex = 1;
+    this.chase.zoom = 1.8;
+    this.hud.flashScreen(opts.interdiction ? 700 : 400);
+    this.audio.boom(opts.interdiction ? 1 : 0.6);
+    this.audio.alarm();
+    this.hud.toast(`${opts.simulated ? 'Simulation: ' : ''}${enemy.name} — ${enemy.ships.length} ship${enemy.ships.length > 1 ? 's' : ''}`, 'warn');
+  }
+
+  /** Station combat simulator: a real fight against a pirate fleet, with nothing at stake. */
+  startSimulation(): void {
+    if (this.combat || !this.frame) return;
+    const restore = { frame: this.frame, local: this.local.clone(), quat: this.ship.quaternion.clone() };
+    if (this.fleetScreen.open) this.toggleFleetScreen();
+    this.clearOfStation();
+    const enemy = pirateFleet(this.encounterRng.int(1, 1e9), fleetStrength(this.player.fleet), Math.max(0.5, this.danger()));
+    enemy.name = `Simulated ${enemy.name}`;
+    this.startCombat(enemy, { simulated: true, distance: 3500 });
+    const started = this.combat as CombatSession | null;
+    if (started) started.restore = restore;
+  }
+
+  /** Move out of the station's way (simulator and demo battles start next to one). */
+  private clearOfStation(): void {
+    if (!this.frame || this.frame.kind !== 'station') return;
+    const out = this.local.clone().setY(0);
+    if (out.lengthSq() < 1) out.set(1, 0, 0);
+    out.normalize();
+    this.local.copy(out).multiplyScalar(16_000);
+    this.ship.velocity.set(0, 0, 0);
+    this.ship.throttle = 0;
+    // Face back toward the station so the fight has a backdrop.
+    this.ship.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), out.clone().negate().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5), new THREE.Vector3(0, 1, 0)));
+    this.snapView();
+  }
+
+  /** Flight model limits from the ship system, readiness and zero-flux boost. */
+  private applyCombatFlight(c: Controls): void {
+    const me = this.combat?.player;
+    const base = this.baseFlight;
+    if (!me) {
+      this.ship.stats = { ...base };
+      return;
+    }
+    const m = me.mods;
+    const cr = me.crFactor;
+    const turn = (m.turn ?? 1) * cr;
+    this.ship.stats = {
+      ...base,
+      maxSpeed: me.maxSpeed,
+      accel: base.accel * (m.accel ?? 1) * cr,
+      strafeAccel: base.strafeAccel * (m.accel ?? 1) * cr,
+      pitchRate: base.pitchRate * turn,
+      yawRate: base.yawRate * turn,
+      rollRate: base.rollRate * Math.max(turn, 0.6),
+    };
+    if (m.burn) {
+      this.ship.throttle = 1;
+      c.throttleAxis = 0;
+    }
+    if (!me.alive) c.throttleAxis = -1;
+  }
+
+  /** Sync the flagship into the sim, advance the battle, and read the results back. */
+  private combatStep(dt: number): void {
+    const cb = this.combat!;
+    let me = this.combatAvatar;
+    if (me?.alive && me.controlled) {
+      me.pos.copy(this.local).sub(cb.origin);
+      me.vel.copy(this.ship.velocity);
+      me.quat.copy(this.ship.quaternion);
+      me.yaw = yawOf(this.ship.forward);
+      me.throttle = this.ship.throttle;
+    }
+    const sim = cb.sim;
+    sim.input.aim = this.combatAimValid ? this.combatAim : null;
+    sim.input.fire = this.input.isMouseDown(0) && this.input.locked && !this.tactical.open;
+    cb.step(dt);
+    if (me) {
+      // Collisions, dashes and wreck drift move the flagship too.
+      this.local.copy(cb.origin).add(me.pos);
+      this.ship.velocity.copy(me.vel);
+      if (!me.alive) {
+        const next = cb.state === 'fighting' ? cb.successor() : null;
+        if (next) this.transferCommand(me, next);
+        else if (me.controlled) {
+          me.controlled = false;
+          this.shipVisual.root.visible = false;
+        }
+        me = this.combatAvatar;
+      }
+    }
+    // Disengaging: supercruise only engages once no hostile is in mass-lock range.
+    if (cb.state === 'fighting' && this.ship.mode === 'supercruise') {
+      cb.outcome = 'escaped';
+      cb.state = 'ending';
+      cb.endT = 99;
+    }
+    if (cb.state === 'ending' && cb.endT > 4) this.showAftermath();
+  }
+
+  /** The flagship is disabled: take command of the strongest surviving ship. */
+  private transferCommand(dead: CombatShip, next: CombatShip): void {
+    const cb = this.combat!;
+    dead.controlled = false;
+    next.controlled = true;
+    next.order = null;
+    this.combatAvatar = next;
+    if (next.instanceId) this.player.fleet.flagshipId = next.instanceId;
+    this.local.copy(cb.origin).add(next.pos);
+    this.ship.velocity.copy(next.vel);
+    this.ship.quaternion.copy(next.quat);
+    this.ship.throttle = Math.min(1, next.throttle);
+    this.rebuildFleetVisuals();
+    this.shipVisual.root.visible = true;
+    cb.renderer.attachPlayerVisual(next, this.shipVisual);
+    this.snapView();
+    this.hud.toast(`${dead.name} disabled — command transferred to ${next.name}`, 'warn');
+    this.hud.flashScreen(300);
+  }
+
+  private handleCombatActions(): boolean {
+    const i = this.input;
+    const cb = this.combat!;
+    if (i.pressed('Tab')) {
+      this.toggleTactical();
+      return true;
+    }
+    if (this.tactical.open) {
+      if (i.pressed('Escape')) this.toggleTactical();
+      return true;
+    }
+    if (cb.state !== 'fighting') return false;
+    const me = cb.player;
+    if (!me) return false;
+    const shift = i.isDown('ShiftLeft') || i.isDown('ShiftRight');
+    for (let g = 0; g < 5; g++) {
+      if (!i.pressed(`Digit${g + 1}`)) continue;
+      const group = me.groups[g];
+      if (!group) continue;
+      if (shift) {
+        group.autofire = !group.autofire;
+        this.hud.toast(`${group.label}: autofire ${group.autofire ? 'on' : 'off'}`);
+      } else me.selectedGroup = g;
+      this.audio.blip(800, 0.04);
+    }
+    if (i.pressed('Mouse2')) {
+      if (!me.shield) this.hud.toast('This hull has no shield generator', 'warn');
+      cb.sim.input.toggleShield = true;
+    }
+    if (i.pressed('KeyV')) cb.sim.input.vent = true;
+    if (i.pressed('KeyF')) {
+      if (me.systemCharges <= 0 || me.systemActive > 0) this.hud.toast(`${me.system.name} not ready`, 'warn');
+      cb.sim.input.system = true;
+    }
+    if (i.pressed('KeyR') || i.pressed('KeyT')) this.combatTarget(i.pressed('KeyR'));
+    return false;
+  }
+
+  /** T: the enemy nearest the crosshair. R: cycle through enemies by distance. */
+  private combatTarget(cycle: boolean): void {
+    const cb = this.combat!;
+    const me = cb.player;
+    if (!me) return;
+    const enemies = cb.sim.enemiesOf(me);
+    if (!enemies.length) return;
+    let pick: CombatShip;
+    if (cycle) {
+      const sorted = enemies.sort((a, b) => a.pos.distanceTo(me.pos) - b.pos.distanceTo(me.pos));
+      pick = sorted[(sorted.indexOf(me.target!) + 1) % sorted.length];
+    } else {
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+      const cam = this.playerArena(new THREE.Vector3()).add(this.chase.offset);
+      pick = enemies.reduce((best, e) => (_v.copy(e.pos).sub(cam).normalize().angleTo(fwd) < _v2.copy(best.pos).sub(cam).normalize().angleTo(fwd) ? e : best));
+    }
+    me.target = pick;
+    this.audio.blip(990, 0.05);
+  }
+
+  toggleTactical(): void {
+    if (!this.combat) return;
+    if (this.tactical.open) {
+      this.tactical.hide();
+      this.afterMapToggle(false);
+      this.combatHud.setVisible(true);
+    } else {
+      this.tactical.show(this.combat.sim);
+      this.afterMapToggle(true);
+      this.combatHud.setVisible(false);
+    }
+  }
+
+  /** Per-frame combat visuals: renderer, aim point and audio listener. */
+  private renderCombat(dt: number): void {
+    const cb = this.combat!;
+    const arena = cb.arenaWorld(new THREE.Vector3());
+    const origin = arena.clone().sub(this.camWorld);
+    const minAngle = (1.5 * THREE.MathUtils.degToRad(this.camera.fov)) / window.innerHeight;
+    cb.renderer.update(this.tactical.open && this.tactical.paused ? 0 : dt * cb.timeScale, origin, minAngle);
+    // Listener for positional audio.
+    this.listener.pos.copy(this.camWorld).sub(arena);
+    this.listener.right.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    // Aim: the first hostile hull under the crosshair, else a point at the selected group's range.
+    const me = cb.player;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const from = this.listener.pos;
+    let best = Infinity;
+    for (const e of cb.sim.ships) {
+      if (!e.alive || e.retreated || e.side === 0) continue;
+      const to = from.clone().addScaledVector(fwd, 6000);
+      const r = cb.sim.rayShip(e, from, to);
+      if (r && r.t * 6000 < best) best = r.t * 6000;
+    }
+    const range = me?.groups[me.selectedGroup]?.weapons.reduce((a, w) => Math.max(a, w.range), 0) ?? 1000;
+    this.combatAim.copy(from).addScaledVector(fwd, best < Infinity ? best : Math.max(range, 600));
+    this.combatAimValid = true;
+  }
+
+  private updateCombatHud(dt: number): void {
+    const cb = this.combat!;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const arena = cb.arenaWorld(new THREE.Vector3());
+    const camInv = _q.copy(this.camera.quaternion).invert();
+    const project = (p: { x: number; y: number; z: number }) => {
+      const v = new THREE.Vector3(p.x, p.y, p.z).add(arena).sub(this.camWorld).applyQuaternion(camInv);
+      if (v.z >= 0) return null;
+      v.applyMatrix4(this.camera.projectionMatrix);
+      return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+    };
+    const focal = h / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const pxPerMetre = (p: { x: number; y: number; z: number }) => focal / Math.max(1, new THREE.Vector3(p.x, p.y, p.z).add(arena).distanceTo(this.camWorld));
+    const me = cb.player;
+    let lead: { x: number; y: number } | null = null;
+    if (me?.target?.alive) {
+      const w0 = me.groups[me.selectedGroup]?.weapons.find((x) => x.def.kind === 'projectile');
+      if (w0) lead = project(cb.sim.leadPoint(w0, me.target, new THREE.Vector3()));
+    }
+    let banner: { title: string; sub: string; kind: 'warn' | 'good' | '' } | null = null;
+    if (cb.state === 'fighting' && cb.age < 3.5) banner = { title: cb.simulated ? 'Simulation' : 'Hostile contact', sub: cb.enemy.name, kind: 'warn' };
+    else if (cb.state === 'ending' && cb.outcome !== 'escaped')
+      banner =
+        cb.outcome === 'victory'
+          ? { title: 'Victory', sub: cb.sim.ships.some((s) => s.side === 1 && s.retreated) ? 'The survivors are fleeing' : 'All hostiles disabled', kind: 'good' }
+          : { title: 'Fleet lost', sub: 'All ships disabled', kind: 'warn' };
+    else if (me && me.overload > 0) banner = { title: 'Overloaded', sub: `Shields and weapons offline · ${me.overload.toFixed(1)}s`, kind: 'warn' };
+    this.combatHud.update(cb.sim, dt, { width: w, height: h, project, lead, pxPerMetre, banner, massLocked: cb.massLocked(this.playerArena(new THREE.Vector3())) });
+  }
+
+  /** Sounds, damage numbers and messages for combat events. */
+  private onCombatEvent(e: CombatEvent): void {
+    const cb = this.combat;
+    if (!cb) return;
+    const me = cb.player;
+    const where = (p: THREE.Vector3) => {
+      const rel = _v.copy(p).sub(this.listener.pos);
+      const d = rel.length();
+      return { vol: 1 / (1 + (d / 450) ** 1.6), pan: d > 1 ? rel.dot(this.listener.right) / d : 0 };
+    };
+    switch (e.t) {
+      case 'shot': {
+        const w = e.weapon;
+        const own = w.ship === me;
+        const { vol, pan } = where(e.pos);
+        const kind = w.def.type === 'missile' ? 'missile' : w.def.model === 'railgun' ? 'railgun' : w.def.model === 'flak' ? 'flak' : w.def.damageType === 'energy' ? 'energy' : w.def.damageType === 'he' ? 'he' : 'kinetic';
+        this.audio.sfx(kind, own ? 0.32 : vol * 0.5, own ? 0 : pan, { S: 0.8, M: 1.2, L: 2 }[w.def.size]);
+        break;
+      }
+      case 'hit': {
+        const { vol, pan } = where(e.pos);
+        this.audio.sfx(e.kind === 'shield' ? 'shieldHit' : 'hullHit', vol * (e.ship === me ? 0.9 : 0.5), pan, e.size);
+        if (e.source && e.source === me && e.ship.side === 1) {
+          const p = this.projectArena(e.pos);
+          if (p) this.combatHud.damageNumber(p.x, p.y, e.damage, e.kind);
+        }
+        break;
+      }
+      case 'explode': {
+        const { vol, pan } = where(e.pos);
+        if (e.kind !== 'flak') this.audio.sfx('explode', vol, pan, e.size);
+        break;
+      }
+      case 'destroyed': {
+        const { vol, pan } = where(e.ship.pos);
+        this.audio.sfx('death', Math.max(0.35, vol), pan, 1 + e.ship.sizeIndex);
+        if (e.ship.side === 1) this.hud.toast(`${e.ship.name} destroyed${e.by === me && me ? ' — your kill' : ''}`, 'good');
+        else this.hud.toast(`${e.ship.name} disabled!`, 'warn');
+        break;
+      }
+      case 'overload':
+        if (e.ship === me) {
+          this.audio.sfx('overload', 0.8);
+          this.hud.toast('Flux overload — shields and weapons offline', 'warn');
+        } else if (e.ship.side === 1 && me?.target === e.ship) this.hud.toast(`${e.ship.name} overloaded — press the attack!`, 'good');
+        break;
+      case 'vent':
+        if (e.ship === me) this.audio.sfx('vent', 0.6);
+        break;
+      case 'system':
+        if (e.ship === me) {
+          this.audio.sfx('system', 0.6);
+          this.hud.toast(`${e.ship.system.name} engaged`);
+        }
+        break;
+      case 'retreated':
+        if (e.ship.side === 1 && cb.sim.stance[1] === 'retreat' && !e.ship.retreated) this.hud.toast(`${cb.enemy.name} are breaking off!`, 'good');
+        break;
+      default:
+        break;
+    }
+  }
+
+  private projectArena(p: THREE.Vector3): { x: number; y: number } | null {
+    const cb = this.combat!;
+    const v = cb.arenaWorld(new THREE.Vector3()).add(p).sub(this.camWorld).applyQuaternion(_q.copy(this.camera.quaternion).invert());
+    if (v.z >= 0) return null;
+    v.applyMatrix4(this.camera.projectionMatrix);
+    return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+  }
+
+  private showAftermath(): void {
+    const cb = this.combat!;
+    cb.state = 'report';
+    const report = cb.report(cb.outcome ?? 'escaped');
+    if (this.tactical.open) this.toggleTactical();
+    // A clean getaway needs no report screen.
+    if (report.outcome === 'escaped' && !report.destroyed.some((d) => d.side === 0)) {
+      this.finishCombat(report, new Set());
+      this.hud.toast(`Disengaged from ${cb.enemy.name}`, 'good');
+      return;
+    }
+    this.input.allowPointerLock = false;
+    this.input.releasePointer();
+    this.hud.setVisible(false);
+    this.combatHud.setVisible(false);
+    this.aftermath.show(
+      {
+        report,
+        credits: this.player.credits,
+        fleetSize: this.player.fleet.ships.length,
+        maxFleet: MAX_FLEET_SIZE,
+        simulated: cb.simulated,
+        fuelRoom: Math.max(0, this.player.fuelCapacity - this.player.fuel),
+        suppliesRoom: Math.max(0, this.player.suppliesCapacity - this.player.supplies),
+      },
+      (recover) => {
+        this.finishCombat(report, recover);
+        this.hud.setVisible(true);
+        setTimeout(() => (this.input.allowPointerLock = true), 50);
+      },
+    );
+  }
+
+  /** Apply a finished battle to the fleet and return to normal flight. */
+  private finishCombat(report: BattleReport, recover: Set<string>): void {
+    const cb = this.combat!;
+    const p = this.player;
+    if (cb.simulated) {
+      p.fleet = cb.fleetBefore;
+      if (cb.restore) {
+        this.frame = cb.restore.frame;
+        this.local.copy(cb.restore.local);
+        this.ship.quaternion.copy(cb.restore.quat);
+        this.ship.velocity.set(0, 0, 0);
+        this.ship.throttle = 0;
+      }
+    } else if (report.outcome === 'defeat') {
+      // Lifepods: the insurer gives you a battered frigate at the nearest station, for a fee.
+      const ship = createShip('kestrel', 'FSV Second Chance');
+      ship.hull = 0.6;
+      ship.cr = 0.4;
+      p.fleet = { ships: [ship], flagshipId: ship.id };
+      const fee = Math.round(p.credits * 0.15);
+      p.credits -= fee;
+      this.hud.toast(`Picked up by a salvage tug. Insurance excess: ${fee.toLocaleString()} ¢`, 'warn');
+    } else {
+      const res = applyReport(p.fleet, report, recover, cb.seed);
+      p.fleet = res.fleet;
+      p.credits -= res.spent;
+      if (report.outcome === 'victory') {
+        p.credits += report.salvage.credits;
+        refreshLogistics(p);
+        p.fuel = Math.min(p.fuelCapacity, p.fuel + report.salvage.fuel);
+        p.supplies = Math.min(p.suppliesCapacity, p.supplies + report.salvage.supplies);
+      }
+    }
+    this.endCombat();
+    if (report.outcome === 'defeat' && !cb.simulated) this.placeAtStation();
+    this.snapView();
+    void this.saveTo('auto');
+  }
+
+  /** Tear down the battle (no results applied). */
+  private endCombat(): void {
+    const cb = this.combat;
+    if (!cb) return;
+    cb.renderer.group.removeFromParent();
+    cb.dispose();
+    this.combat = null;
+    this.combatAvatar = null;
+    this.spectate = null;
+    if (this.tactical.open) this.tactical.hide();
+    this.aftermath.hide();
+    this.escorts.group.visible = true;
+    this.escorts.reset();
+    this.shipVisual.root.visible = true;
+    this.rebuildFleetVisuals();
+    this.ship.stats = { ...this.baseFlight };
+    this.hud.root.classList.remove('in-combat');
+    this.combatHud.setVisible(false);
+    this.encounters.reset(150);
+    this.updateFrame(false);
+    this.escorts.snap(this.ship.quaternion);
+  }
+
+  /** Drop a battle immediately (loading a save, new game). */
+  abortCombat(): void {
+    if (!this.combat) return;
+    this.player.fleet = this.combat.fleetBefore;
+    this.endCombat();
   }
 
   /** Debug helpers, exposed on window.game for testing and screenshots. */
@@ -1416,6 +1988,41 @@ export class Game {
     },
     map: () => this.toggleMap(),
     galaxyMap: () => this.toggleGalaxyMap(),
+    /** Start a fight with pirates sized against the current fleet (strength multiplier). */
+    fight: (strength = 1) => {
+      const enemy = pirateFleet(this.encounterRng.int(1, 1e9), fleetStrength(this.player.fleet) * strength, this.danger());
+      this.startCombat(enemy, { distance: 3000 });
+      return enemy.ships.map((s) => `${s.name} (${s.loadout.hullId})`);
+    },
+    /** The Phase 4 demo: a five-ship fleet against five pirates. */
+    battle: () => {
+      const ids = ['vanguard', 'harrier', 'lumen', 'kestrel', 'wisp'];
+      const names = ['HNS Resolute', 'FSV Long Haul', 'TCS Prism', 'FSV Wanderer', 'TCS Halcyon'];
+      const ships = ids.map((id, i) => createShip(id, names[i]));
+      this.player.fleet = { ships, flagshipId: ships[0].id };
+      this.rebuildFleetVisuals();
+      this.clearOfStation();
+      const enemy: EnemyFleet = {
+        name: "Kessa Thorn's Reavers",
+        faction: 'pirate',
+        ships: ['corsair', 'bastion', 'jackal', 'jackal', 'harrier'].map((id, i) => ({
+          id: `demo-${i}`,
+          name: ['Widow\'s Grin', 'Iron Debt', 'Rusty Knife', 'Cutthroat', 'Last Laugh'][i],
+          loadout: createShip(id, 'x').loadout,
+          hull: 1,
+          cr: MAX_CR,
+        })),
+      };
+      this.startCombat(enemy, { distance: 3600 });
+      return 'Battle started';
+    },
+    combat: () => this.combat,
+    /** Watch a combat ship from an offset (metres, arena axes); call with no name to return to the chase camera. */
+    spectate: (name?: string, offset: [number, number, number] = [300, 150, 300]) => {
+      const ship = name ? this.combat?.sim.ships.find((x) => x.name.toLowerCase() === name.toLowerCase()) : null;
+      this.spectate = ship ? { ship, offset: new THREE.Vector3(...offset) } : null;
+      return ship ? ship.name : 'chase camera';
+    },
     anchors: () => this.universe.anchors.map((a) => `${a.name} (${a.kind}${a.kind === 'body' ? ' ' + (a as BodyState).def.type : ''})`),
     system: () => this.universe.system,
     state: () => ({

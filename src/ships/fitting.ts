@@ -132,6 +132,9 @@ export interface ShipStats {
   rangeMax: number;
   pointDefence: number;
   missiles: number;
+  /** Hullmod multipliers on weapon range and missile rate of fire. */
+  rangeMult: number;
+  missileRofMult: number;
 }
 
 /** Effective stats of a loadout: hull base + vents/capacitors + hullmods + weapons. */
@@ -216,6 +219,8 @@ export function computeStats(l: Loadout): ShipStats {
     rangeMax: Math.round(rangeMax),
     pointDefence: pd,
     missiles,
+    rangeMult: base['range.all'],
+    missileRofMult: base['rof.missile'],
   };
 }
 
