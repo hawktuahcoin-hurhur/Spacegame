@@ -1,29 +1,47 @@
 import * as THREE from 'three';
 
-/** Smoothed third-person chase camera. */
+/**
+ * Third-person chase camera. Smoothing happens in ship-relative space, so the
+ * camera never lags kilometres behind at supercruise speeds. Produces an
+ * offset from the ship (system orientation) plus an orientation.
+ */
 export class ChaseCamera {
-  private readonly offset = new THREE.Vector3(0, 3.5, 14);
-  private readonly lookAhead = new THREE.Vector3(0, 1.5, -20);
+  /** Camera position relative to the ship, in system-space axes. */
+  readonly offset = new THREE.Vector3();
+  readonly quaternion = new THREE.Quaternion();
+  private readonly baseOffset = new THREE.Vector3(0, 7.5, 34);
+  private readonly lookAhead = new THREE.Vector3(0, 3, -40);
+  private readonly shake = new THREE.Vector3();
+  zoom = 1;
+  orbitYaw = 0;
+  orbitPitch = 0;
 
-  constructor(
-    readonly camera: THREE.PerspectiveCamera,
-    private readonly target: THREE.Object3D,
-  ) {
-    this.snap();
+  snap(shipQuat: THREE.Quaternion): void {
+    this.offset.copy(this.baseOffset).applyQuaternion(shipQuat);
+    this.quaternion.copy(shipQuat);
   }
 
-  snap(): void {
-    this.camera.position.copy(this.offset).applyQuaternion(this.target.quaternion).add(this.target.position);
-    this.camera.quaternion.copy(this.target.quaternion);
-  }
+  update(dt: number, shipQuat: THREE.Quaternion, speedFactor: number, shakeAmount: number, time: number): void {
+    const local = this.baseOffset.clone().multiplyScalar(this.zoom);
+    // Pull back slightly with speed.
+    local.z += speedFactor * 6;
+    local.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.orbitPitch);
+    local.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw);
+    const desired = local.applyQuaternion(shipQuat);
+    const k = 1 - Math.exp(-dt * 7);
+    this.offset.lerp(desired, k);
 
-  update(dt: number): void {
-    const desiredPos = this.offset.clone().applyQuaternion(this.target.quaternion).add(this.target.position);
-    const k = 1 - Math.exp(-dt * 6);
-    this.camera.position.lerp(desiredPos, k);
-    this.camera.quaternion.slerp(this.target.quaternion, k);
-    const look = this.lookAhead.clone().applyQuaternion(this.target.quaternion).add(this.target.position);
-    const m = new THREE.Matrix4().lookAt(this.camera.position, look, new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion));
-    this.camera.quaternion.setFromRotationMatrix(m);
+    // Orientation: look at a point ahead of the ship, with the ship's up vector (smoothed).
+    const look = this.lookAhead.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.orbitYaw).applyQuaternion(shipQuat);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(shipQuat);
+    const m = new THREE.Matrix4().lookAt(this.offset, look, up);
+    const target = new THREE.Quaternion().setFromRotationMatrix(m);
+    this.quaternion.slerp(target, 1 - Math.exp(-dt * 9));
+
+    if (shakeAmount > 0) {
+      this.shake.set(Math.sin(time * 61.3) + Math.sin(time * 23.1), Math.sin(time * 47.9) + Math.cos(time * 31.7), 0).multiplyScalar(shakeAmount * 0.004);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.shake.x, this.shake.y, 0));
+      this.quaternion.multiply(q);
+    }
   }
 }

@@ -88,10 +88,11 @@ docs/
 ### 2.4 Coordinates & Scale (critical for Three.js)
 Float32 precision breaks down at large distances. Strategy:
 - **Galaxy space**: abstract 2D/3D coordinates in light-years — never rendered at true scale; galaxy map is its own scene.
-- **System space**: each star system is its own scene. Units = 1 unit ≈ 1 km "game scale" (compressed: planets ~ 500–6000 u radius, orbits ~ 20k–400k u).
-- **Floating origin**: the camera/player stays near (0,0,0); the world is shifted when the player exceeds a threshold (e.g. 5,000 u). All sim positions stored in float64 (JS numbers) and converted to render-relative positions each frame.
-- **Logarithmic depth buffer** enabled in SystemScene to render planets far away and ships up close without z-fighting.
-- **Travel**: in-system "supercruise" (velocity scales with distance to nearest gravity well, Elite-style) so large distances are traversed in seconds-to-minutes.
+- **System space** *(implemented in Phase 1)*: each star system is its own scene. **1 unit = 1 metre**, with a compressed system scale: rocky worlds 12–55 km radius, gas giants 120–260 km, stars 240–2400 km, orbits ~3–300 Mm.
+- **Camera-relative rendering** *(implemented)*: the camera always sits at the render origin. All sim positions are float64 (JS numbers); every frame each object's render position is `simPos − cameraPos`, so precision is always highest where the player is looking.
+- **Reference frames** *(implemented)*: the ship's position and velocity are stored relative to the body or station whose sphere of influence it is in, so orbiting planets and stations carry the player with them. Frames switch automatically at SOI boundaries.
+- **Logarithmic depth buffer** with float depth texture; analytic shaders write log depth themselves.
+- **Travel**: in-system "supercruise" whose speed cap scales with distance to the nearest surface (Elite-style), from 2 km/s to 3 Mm/s, so crossing a system takes about a minute.
 
 ### 2.5 Simulation Time
 - **Real-time** in flight/combat; **pause-able** (tactical pause).
@@ -221,18 +222,30 @@ interface HullDef {
 
 Each phase ends with a **playable build** and a demo goal.
 
-### Phase 0 — Foundation (Week 1)  ✅ *scaffolded in this commit*
+### Phase 0 — Foundation (Week 1)  ✅ *done*
 - Vite + TS + Three.js project, strict TS, lint/format, Vitest
 - Game loop (fixed-step sim, variable render), input manager, seeded RNG
 - Renderer + bloom composer, starfield, flyable placeholder ship with chase camera
 - **Demo**: fly a ship around a starfield with bloom.
 
-### Phase 1 — A Star System (Weeks 2–3)
+### Phase 1 — A Star System (Weeks 2–3)  ✅ *done*
 - System generator (star, planets, moons, belts) from seed
 - Planet shaders (type-based), star shader, atmospheres, orbits
 - Floating origin, log depth buffer, supercruise
 - System map overlay & nav markers
 - **Demo**: fly across a procedurally generated system and approach planets.
+
+**As built:**
+- **Generator** (`src/galaxy/`): 7 spectral classes; 4–8 orbit slots spaced geometrically from a habitable zone; 9 world types picked by temperature; moons, rings, asteroid belts and one trade station per system. Spheres of influence never overlap. Every value derives from the seed (see the determinism tests).
+- **Planets** (`src/render/shaders/planet.ts`): each planet is a ray-traced analytic sphere drawn on a proxy cube, so silhouettes are exact at any distance. Surfaces are baked into cube maps on the GPU, with domain-warped FBM, ridged mountains, craters, biomes, ice caps, cyclonic clouds and gas-giant bands with vortex storms. Bakes are 256 px at load; a progressive 1024 px bake streams in strips as the player approaches. Runtime detail noise covers close range. The surface shader also does ocean sun-glint and Fresnel, lava with crust and emissive cracks, bioluminescent seas, cloud shadows, ring shadows, differential flow on gas giants, and sun reddening at the terminator.
+- **Atmospheres** (`src/render/shaders/post.ts`): Rayleigh + Mie single scattering runs as a screen-space pass that reads the scene depth. Haze wraps everything, the sky turns blue from inside, and daylight washes out the stars.
+- **Star**: granulation (Worley), limb darkening, sunspots, an animated corona, and a depth-tested lens flare.
+- **Pipeline**: HDR scene with MSAA → atmosphere → physically based bloom (Jimenez downsample/upsample) → ACES tonemapping, vignette, dither and a supercruise radial blur.
+- **Skybox**: a nebula and galactic band baked per system, plus HDR twinkling stars. The PMREM environment provides ship reflections.
+- **Flight** (`src/ships/flight.ts`): virtual-joystick mouse, throttle, strafe, boost and flight assist; supercruise charges up, is mass-locked near bodies, and drops automatically on arrival; auto-align to target.
+- **World**: a rotating ring station, instanced asteroid fields generated around the player, belt dust, collisions, sun shadowing on the ship from planets, and coloured planetshine.
+- **UI**: nav markers with brackets and an off-screen target arrow, a target panel with ETA, the system map (log-scaled orbits, textured globes, info panel, set target) and a help overlay.
+- **Debug**: `window.game.debug` (`goto`, `lookAt`, `target`, `supercruise`, `map`, `anchors`).
 
 ### Phase 2 — Galaxy & Travel (Weeks 4–5)
 - Galaxy generator in worker; galaxy map scene with jump plotting
