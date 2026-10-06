@@ -2692,6 +2692,7 @@ export class Game {
     combat: () => this.combat,
     /** Land immediately on a named body (skips the approach). */
     land: (name?: string) => {
+      if (!this.universe) return 'still loading';
       const b = (name ? this.universe.anchors.find((a) => a.name.toLowerCase() === name.toLowerCase()) : this.universe.bodies.find((x) => isLandable(x.def) && x.def.type !== 'barren')) as BodyState | undefined;
       if (!b || b.kind !== 'body') return 'no such body';
       this.debug.goto(b.name, 3000, { view: 0.9 });

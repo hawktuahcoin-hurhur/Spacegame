@@ -329,9 +329,9 @@ export class SurfaceSession {
     const tip = new THREE.Mesh(new THREE.IcosahedronGeometry(0.03, 0), accent);
     tip.position.set(0, 0.01, -0.42);
     g.add(a, b, c, strip, tip);
-    g.position.set(0.3, -0.27, -0.62);
+    g.position.set(0.24, -0.2, -0.82);
     g.rotation.y = -0.08;
-    g.scale.setScalar(0.62);
+    g.scale.setScalar(0.5);
     g.traverse((o) => ((o as THREE.Mesh).renderOrder = 20));
     return g;
   }
@@ -753,7 +753,7 @@ export class SurfaceSession {
     } else this.heat = Math.max(0, this.heat - dt * (this.overheated > 0 ? 0.33 : 0.5));
     this.beam.visible = this.beamHit.visible = !!beamTo;
     if (beamTo) {
-      const muzzle = new THREE.Vector3(0.3, -0.26, -0.9).applyMatrix4(this.camera.matrixWorld);
+      const muzzle = new THREE.Vector3(0.24, -0.195, -1.03).applyMatrix4(this.camera.matrixWorld);
       this.beam.position.copy(muzzle);
       this.beam.lookAt(beamTo);
       this.beam.scale.set(1 + Math.sin(this.time * 60) * 0.4, 1 + Math.sin(this.time * 60) * 0.4, muzzle.distanceTo(beamTo));
