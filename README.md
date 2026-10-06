@@ -40,8 +40,8 @@ URL options:
 | W / S, X | Throttle up / down, cut throttle |
 | Q / E | Roll |
 | A / D, Space / Ctrl | Strafe (fine manoeuvring, e.g. near stations) |
-| Shift | Boost |
-| J | Supercruise: charge & engage / drop. **With a system targeted: hyperjump** |
+| Shift | Boost: sprint at 10× top speed |
+| J | Supercruise: charge & engage / drop, target or not. **With a reachable system targeted: hyperjump** (from supercruise, when lined up with it) |
 | T, [ / ] | Target what's ahead (including neighbouring stars), cycle targets |
 | G | Auto-align to target |
 | M | System map (click to select, **Set target**) |

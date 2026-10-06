@@ -5,7 +5,8 @@ export type FlightStats = typeof SHIP_STATS;
 /** Default flight stats (the starter Kestrel frigate). Real ships derive theirs from hull stats. */
 export const SHIP_STATS = {
   maxSpeed: 260,
-  boostMultiplier: 2.6,
+  /** Boost is a sprint: many times top speed, reached in a few seconds. */
+  boostMultiplier: 10,
   accel: 95,
   strafeAccel: 70,
   pitchRate: 1.25,
@@ -248,7 +249,8 @@ export class ShipController {
       const boost = this.boosting ? s.boostMultiplier : 1;
       const maxSpeed = s.maxSpeed * boost;
       const fwdSpeed = this.velocity.dot(forward);
-      const desired = this.throttle * maxSpeed;
+      // Boost always drives to the boosted top speed, whatever the throttle.
+      const desired = this.boosting ? maxSpeed : this.throttle * maxSpeed;
       const dv = THREE.MathUtils.clamp(desired - fwdSpeed, -s.accel * dt * boost, s.accel * dt * boost);
       this.velocity.addScaledVector(forward, dv);
       this.velocity.addScaledVector(_right, c.strafeX * s.strafeAccel * dt);

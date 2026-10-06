@@ -997,8 +997,21 @@ export class Game {
     if (this.anyMapOpen || this.inTunnel) return;
     if (i.pressed('KeyJ')) {
       if (this.jump?.phase === 'charging') this.cancelJump('Hyperjump cancelled');
-      else if (this.systemTarget) this.startJump();
-      else this.pendingToggleSC = true;
+      else if (
+        this.systemTarget &&
+        !this.jumpBlocker(this.shipWorld(new THREE.Vector3())) &&
+        // From supercruise, J jumps only when lined up with the destination; otherwise it drops out.
+        (this.ship.mode === 'normal' || this.alignmentAngle() < JUMP_ALIGN_ANGLE * 2)
+      )
+        this.startJump();
+      else {
+        // Supercruise works with or without a target; a hyperspace target only takes over J when the jump can actually start.
+        if (this.systemTarget && this.ship.mode === 'normal') {
+          const why = this.jumpBlocker(this.shipWorld(new THREE.Vector3()));
+          if (why && !why.startsWith('Mass locked')) this.hud.toast(`Hyperjump unavailable: ${why} — engaging supercruise`, 'warn');
+        }
+        this.pendingToggleSC = true;
+      }
     }
     if (i.pressed('KeyX')) this.pendingZero = true;
     if (i.pressed('KeyR') && !cb) {
