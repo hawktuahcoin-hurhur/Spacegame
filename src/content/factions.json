@@ -1,0 +1,44 @@
+[
+ {
+  "id": "hegemony", "name": "Hegemony Directorate", "short": "Hegemony", "color": "#e0a84a",
+  "description": "The authoritarian heir to the old core governments. Orderly, heavily armed and deeply suspicious of everyone else.",
+  "style": "hegemony", "tariff": 0.18, "illegal": ["drugs", "ai_cores"], "restricted": ["weapons"],
+  "hulls": { "kestrel": 2, "bastion": 4, "harrier": 2, "vanguard": 3, "dominion": 1 },
+  "aggression": 0.8, "military": true, "playable": true
+ },
+ {
+  "id": "tricorp", "name": "Tri-Corp", "short": "Tri-Corp", "color": "#4fd6ff",
+  "description": "A megacorporation that owns its worlds outright. Rich, technologically superior and pragmatic about almost everything.",
+  "style": "tricorp", "tariff": 0.12, "illegal": ["drugs"], "restricted": ["weapons"],
+  "hulls": { "wisp": 4, "lumen": 3, "aurora": 1 },
+  "aggression": 0.5, "military": true, "playable": true
+ },
+ {
+  "id": "league", "name": "Free Trade League", "short": "League", "color": "#7dff9a",
+  "description": "A loose federation of frontier merchant worlds. Low tariffs, few questions, and a navy that mostly escorts convoys.",
+  "style": "frontier", "tariff": 0.08, "illegal": ["ai_cores"], "restricted": [],
+  "hulls": { "kestrel": 4, "harrier": 3, "meridian": 2, "atlas": 0.5 },
+  "aggression": 0.3, "military": true, "playable": true
+ },
+ {
+  "id": "ascendant", "name": "Ascendant Path", "short": "Ascendant", "color": "#ff7ad0",
+  "description": "Zealots who believe humanity must purify itself before it reaches the galactic core. They ban luxuries and burn AI cores.",
+  "style": "hegemony", "tariff": 0.15, "illegal": ["drugs", "luxury", "ai_cores"], "restricted": ["weapons"],
+  "hulls": { "jackal": 3, "bastion": 3, "harrier": 2, "vanguard": 1 },
+  "aggression": 0.9, "military": true, "playable": true
+ },
+ {
+  "id": "independent", "name": "Independent Worlds", "short": "Independent", "color": "#c9d3de",
+  "description": "Unaligned colonies and free stations. They trade with anyone and fight only to defend themselves.",
+  "style": "frontier", "tariff": 0.1, "illegal": [], "restricted": [],
+  "hulls": { "kestrel": 4, "harrier": 2, "meridian": 1 },
+  "aggression": 0.1, "military": false, "playable": false
+ },
+ {
+  "id": "pirates", "name": "Pirate Clans", "short": "Pirates", "color": "#ff5a4f",
+  "description": "Raiders, smugglers and worse, operating from hidden havens in the fringe. Their markets sell anything to anyone with credits.",
+  "style": "pirate", "tariff": 0.05, "illegal": [], "restricted": [],
+  "hulls": { "jackal": 6, "kestrel": 2, "corsair": 2.5, "harrier": 1, "bastion": 1, "vanguard": 0.4 },
+  "aggression": 1, "military": false, "playable": false
+ }
+]

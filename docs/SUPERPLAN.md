@@ -396,17 +396,104 @@ Each phase ends with a **playable build** and a demo goal.
   - Saving is blocked mid-battle.
 - **Demo:** `?battle=1` (or `game.debug.battle()`) starts a 5v5: Vanguard, Harrier, Lumen, Kestrel and Wisp against a Corsair, Bastion, two Jackals and a Harrier.
 
-### Phase 5 — Economy Core (Weeks 14–17)
+### Phase 5 — Economy Core (Weeks 14–17)  ✅ *done*
 - Commodities, markets, industries, daily production tick in worker
 - Dynamic pricing, legality, tariffs; market UI
 - NPC trade convoys as real fleets in galaxy sim
 - **Demo**: profitable trade route that dries up if you over-exploit it.
 
-### Phase 6 — Factions & Missions (Weeks 18–21)
+**As built:**
+- **Content:** 16 commodities (`content/commodities.json`) with base prices and categories. Contraband is drugs, weapons and AI cores.
+- **Markets** (`src/campaign/economy.ts`, pure):
+  - Every one of the ~685 systems has a market at its station.
+  - Population size 1–10 comes from region and homeworld. Capitals are big.
+  - Industries come from the system's actual planets: farming on terran/ocean worlds, ice mining, mining (rocky worlds and belts), gas harvesting, refining, fuel, heavy and light industry, drug labs in lawless space, and military bases.
+  - Each industry has per-size inputs and outputs. Production slows when inputs run short or stability drops.
+  - Population consumes food, water, goods, supplies and fuel.
+- **Daily tick:**
+  - Produce, consume, then a mean-reverting pull toward target stock (abstract off-map trade) with a cap on gluts.
+  - Conditions (blights, mining disasters, booms, strikes, occupation) modify production or consumption for N days.
+- **Pricing:** `base × clamp((target/stock)^0.55, 0.3, 4)`.
+  - Typical spread runs from about 0.8× at producers to about 1.7× at pure consumers. Events and wars push prices to the 4× cap.
+  - Trades walk the price curve, so big orders get progressively worse.
+  - Buy price adds a 5% spread plus the owner's tariff, adjusted for your standing and commission. Sell price is 5% under mid.
+- **Legality:**
+  - Each faction lists illegal and restricted goods (restricted is legal only for its commissioned officers).
+  - Banned goods trade on the black market: no tariff, 1.3× sell premium, but each deal risks a customs bust (confiscation or fine, −8 reputation).
+- **Convoys:**
+  - Real NPC fleets carry surplus to nearby shortages along jump routes, one jump per day. Up to about 48 are active.
+  - They avoid enemy territory and can be raided passing through pirate-infested space.
+  - They show on the galaxy map.
+- **Market UI** (station → **Market**):
+  - Stock status, buy/sell prices, holdings and ±1/10/Max trades.
+  - Illegal and restricted goods are flagged.
+  - Best prices you've seen elsewhere sit beside each row.
+  - The left panel shows owner, population, stability, tariff, industries, conditions, war and pirate alerts, and local law.
+- **Logistics:**
+  - Trade goods and supplies share the fleet's cargo capacity.
+  - Refuelling now buys fuel and supplies at market prices. Buying fuel or supplies in the market fills the tanks and stores directly.
+- **Demo, verified in tests:**
+  - A 600-unit metals run near the start nets about 21k, then about 11k, 5k, break-even and losses as you flood the buyer.
+  - After about 20 days left alone it is back to about 15k.
+- **Deviation from plan:** the campaign runs on the main thread rather than the worker. A day for all 685 markets, fleets and diplomacy costs about 1–2 ms, and days pass mostly on jumps. Keeping it synchronous avoids async round-trips for every trade, mission and save. The module is pure, so it can move to the worker unchanged.
+
+### Phase 6 — Factions & Missions (Weeks 18–21)  ✅ *done*
 - Faction defs, relations, reputation, commissions
 - Strategic AI: patrols, raids, wars, territory shifts
 - Procedural missions & bar/contact system; Intel feed
 - **Demo**: a war breaks out, prices spike, player profits from smuggling or takes a commission.
+
+**As built:**
+- **Factions** (`content/factions.json`): Hegemony Directorate, Tri-Corp, Free Trade League, Ascendant Path, Independent Worlds and Pirate Clans.
+  - Each has a colour, ship style, preferred hulls, tariff, illegal and restricted goods, and an aggression level.
+  - Remnant machines and Precursors are deferred to the exploration phases.
+- **Territory** (`campaign/territory.ts`, deterministic per seed):
+  - Hegemony and Tri-Corp capitals sit on opposite sides of the core.
+  - The League's capital is 14–34 ly from the start, so you begin in friendly space.
+  - The Ascendant Path is across the galaxy; pirate havens are in the deep fringe.
+  - Influence is weighted Voronoi with noisy borders. Independents fill the gaps.
+- **Diplomacy** (`campaign/campaign.ts`, strategic tick every 3 days):
+  - A faction↔faction relation matrix drifts toward base attitudes, with border incidents between rivals.
+  - Wars are declared below −55. Each side sends raids (looting stock, cutting stability) and invasions that can capture systems, flipping ownership and occupying the market.
+  - War weariness leads to ceasefires.
+  - Front-line systems get heavy military requisitions of supplies, fuel and weapons, so prices spike.
+  - Pirate havens launch raids; recently raided systems are "hot" and see more pirate interdictions.
+  - Faction patrols tour their space and favour the front.
+- **Reputation** (−100..100, Starsector bands from Vengeful to Cooperative):
+  - Hostile (≤ −50) means attacked on sight and no docking.
+  - Inhospitable (≤ −20) means higher tariffs and no jobs.
+  - Friendly (25+) means lower tariffs and warships in that faction's shipyards.
+  - Reputation moves with kills, jobs, failed jobs, customs busts, refusing scans and dead pirates.
+- **Commissions** (station → **Bar**, Favorable 15+):
+  - A stipend every 7 days, scaled by faction size.
+  - A bounty per enemy ship, half tariffs, and legal restricted goods.
+  - Their enemies at war become hostile to you, including wars declared later.
+- **Encounters:**
+  - Customs patrols of the local navy hail you in supercruise. You can comply, bribe, or fight; contraband is confiscated with a fine.
+  - Hostile navies interdict you.
+  - Pirate interdictions scale with pirate activity, and only happen while pirates are hostile.
+  - All of these use a comm dialog (keys 1–n) that pauses flight.
+  - Combat is generalised to any faction's fleet: hull mix by faction, names by style.
+- **Missions** (`campaign/missions.ts`, station → **Bar**): each station's board is deterministic per 4-day period, with 3–5 jobs.
+  - **Delivery:** cargo provided, held as mission cargo that can't be sold.
+  - **Procurement:** bring goods the station is short of.
+  - **Bounty:** a named pirate band waiting in a target system. Arrive, and they show up after a few seconds.
+  - **Smuggling:** illegal goods into a market that bans them; patrols may scan you.
+  - **Survey:** completes when you arrive in an uncharted system.
+  - **War strike:** commission or Friendly standing, against enemy fleets at the front.
+  - Deadlines are in days, with a reputation penalty for failing or abandoning a job.
+  - Contacts (mission givers) pay +8% per completed job, up to +40%.
+- **Intel screen (I):**
+  - News feed (wars, captures, raids, shortages, booms, convoy losses), filterable by distance.
+  - Active jobs with days left, route plotting and abandon.
+  - Faction table: your standing, territory size, wars and the relation matrix, plus law and tariffs.
+  - Trade intel: best buy and sell prices recorded at markets you've docked at, ranked by margin, with routes.
+- **Galaxy map:**
+  - Territory glow in faction colours, red war-front markers, and NPC fleet markers (convoys, raids, invasions, foreign patrols).
+  - Job destinations labelled.
+  - Info panel shows owner, market, standing, price-intel age, fleets present, conditions and alerts.
+- **Saves v3:** the campaign snapshot (owners, relations, wars, fleets, news, market stocks and conditions, RNG state) plus cargo, reputation, commission, jobs, contacts and price intel. v2 saves migrate to a fresh campaign advanced to the save's day.
+- **Demo, verified in tests:** declaring Hegemony–Ascendant war raises front-line military goods to more than 1.2× a peace control within 10 days. A new galaxy usually has a war already running or brewing between the Hegemony and the Ascendant Path; smuggle weapons to the front, or take a League commission.
 
 ### Phase 7 — Planet Surfaces (Weeks 22–26)
 - Landing transition (orbit → atmospheric entry → surface scene)

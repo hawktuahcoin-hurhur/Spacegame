@@ -2,10 +2,13 @@
 
 A 3D space exploration & commerce sim in Three.js: No Man's Sky-style procedural exploration meets Starsector-style fleets, fitting and a living faction economy.
 
-See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–4 are playable:**
+See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–6 are playable:**
 - a procedural galaxy of about 670 star systems you can chart and jump between,
 - a fleet of procedurally built ships you can buy, refit and fly in formation,
-- real-time fleet battles against pirates, with a tactical command view, salvage and recovery.
+- real-time fleet battles against pirates, with a tactical command view, salvage and recovery,
+- a living economy of 685 markets with real NPC convoys,
+- six factions that trade, patrol, raid and go to war,
+- jobs, commissions, smuggling and an intel feed.
 
 ## Run
 You need **Node.js 20.19+ or 22.12+**. Check with `node -v`, and get the LTS from [nodejs.org](https://nodejs.org) if yours is older.
@@ -46,7 +49,8 @@ URL options:
 | G | Auto-align to target |
 | M | System map (click to select, **Set target**) |
 | N | Galaxy map (search, **Plot route**) |
-| R | Dock when near a station: refit, shipyard, refuel |
+| R | Dock when near a station: market, bar (jobs & commissions), refit, shipyard, services |
+| I | Intel: news, your jobs, factions & standing, trade price intel |
 | F | Fleet & refit screen (view-only until docked) |
 | C | Camera distance |
 | F5 / F9 | Quicksave / quickload |
@@ -84,7 +88,24 @@ Prefer the old virtual-joystick steering, inverted Y or a different mouse sensit
 
 Bigger fleets carry more fuel and cargo but burn more per jump, and they jump only as far as their shortest-ranged drive.
 
-**Running low on fuel?** Skim a star's corona to scoop, or press **R** at any station.
+**Running low on fuel?** Skim a star's corona to scoop for free, or press **R** at any station and buy fuel at market prices.
+
+**Trading:**
+- **Market tab.** Dock (**R**) and open **Market**. Prices follow each station's stockpile:
+  - farming worlds sell food cheap,
+  - industrial worlds pay well for raw materials,
+  - shortages (blights, raids, wars) pay best.
+- **Price intel.** Every market you dock at records its prices. The Market tab and **Intel → Trade intel** show the best buy and sell prices you've seen elsewhere.
+- **Hold space.** Your hold is your fleet's total cargo capacity, shared with supplies. A Meridian or Atlas turns trading into real money.
+- **Flooding.** Big trades move prices against you. Run the same route over and over and it dries up; it recovers after a few weeks.
+- **Contraband.** Drugs, weapons and AI cores are illegal or restricted in much of the galaxy. They trade on the black market at a premium, at the risk of a customs bust. Patrols may scan you in supercruise: comply, bribe, or fight.
+
+**Factions, jobs and war:**
+- **Factions.** The Hegemony, Tri-Corp, the Free Trade League, the Ascendant Path, the Independents and the pirate clans each hold territory. The galaxy map shows it in their colours.
+- **Wars.** Factions declare wars, raid each other and capture systems. Front-line markets crave supplies, fuel and weapons.
+- **Reputation.** Your standing with each faction rises and falls with what you do. Hostile factions attack you on sight and won't let you dock.
+- **Jobs.** The **Bar** offers deliveries, procurement, pirate bounties, smuggling runs, surveys and wartime strikes. Track them with **I** and plot routes to them.
+- **Commissions.** With Favorable standing you can take a commission: a weekly stipend and bounties, but their enemies become yours.
 
 **Fighting:**
 - **Interdiction.** Pirates haunt frontier and fringe systems. In supercruise they may interdict you: a 5 s warning, then you're pulled out with them about 4 km ahead. Space near stations is patrolled and safe.
@@ -127,4 +148,7 @@ game.debug.warp(42)                                          // arrive instantly
 game.debug.fight(1.2)                                        // pirates at 1.2× your fleet strength
 game.debug.battle()                                          // the 5v5 demo battle
 game.debug.spectate("Widow's Grin", [300, 150, 300])         // watch a combat ship; spectate() returns to chase
+game.debug.campaign()                                        // day, owner here, wars, reputation, cargo, jobs
+game.debug.war('hegemony', 'ascendant'); game.debug.days(7)  // start a war, let a week pass
+game.debug.rep('league', 30); game.debug.cargo('drugs', 20); game.debug.hail()
 ```

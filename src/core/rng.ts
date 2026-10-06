@@ -26,6 +26,15 @@ export class Rng {
     return items[Math.floor(this.next() * items.length)];
   }
 
+  /** Current internal state (for saving a long-lived generator). */
+  get stateValue(): number {
+    return this.state;
+  }
+
+  set stateValue(v: number) {
+    this.state = v >>> 0;
+  }
+
   /** Derive an independent child seed, e.g. galaxySeed -> systemSeed(i). */
   static derive(seed: number, index: number): number {
     let h = (seed ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0;

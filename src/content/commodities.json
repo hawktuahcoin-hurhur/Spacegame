@@ -1,0 +1,18 @@
+[
+ { "id": "food", "name": "Food", "price": 30, "category": "basic", "description": "Grain, protein vats and preserved rations. Everyone eats." },
+ { "id": "water", "name": "Water", "price": 22, "category": "basic", "description": "Purified ice melt. Heavy, cheap and always needed." },
+ { "id": "organics", "name": "Organics", "price": 38, "category": "raw", "description": "Biomass feedstock for light industry." },
+ { "id": "ore", "name": "Ore", "price": 26, "category": "raw", "description": "Iron, nickel and silicates from mines and belts." },
+ { "id": "rare_ore", "name": "Rare Ore", "price": 110, "category": "raw", "description": "Heavy-element ores: transuranics and platinoids." },
+ { "id": "volatiles", "name": "Volatiles", "price": 64, "category": "raw", "description": "Hydrogen, helium-3 and noble gases skimmed from gas giants." },
+ { "id": "metals", "name": "Metals", "price": 72, "category": "industrial", "description": "Refined structural alloys." },
+ { "id": "rare_metals", "name": "Rare Metals", "price": 240, "category": "industrial", "description": "Exotic alloys for drives and electronics." },
+ { "id": "fuel", "name": "Fuel", "price": 24, "category": "logistics", "description": "Starship fuel. Buying it fills your tanks." },
+ { "id": "supplies", "name": "Supplies", "price": 90, "category": "logistics", "description": "Spare parts and consumables. Buying them fills your fleet's supply stores." },
+ { "id": "machinery", "name": "Heavy Machinery", "price": 190, "category": "industrial", "description": "Mining rigs, fabricators and construction drones." },
+ { "id": "domestic", "name": "Domestic Goods", "price": 84, "category": "consumer", "description": "Clothing, furniture, appliances — the stuff of everyday life." },
+ { "id": "luxury", "name": "Luxury Goods", "price": 420, "category": "consumer", "description": "Fine wines, art and handcrafted goods for the wealthy." },
+ { "id": "drugs", "name": "Recreational Drugs", "price": 520, "category": "contraband", "description": "Stims and designer narcotics. Illegal almost everywhere." },
+ { "id": "weapons", "name": "Hand Weapons", "price": 360, "category": "contraband", "description": "Small arms and munitions. Restricted in most civilised space." },
+ { "id": "ai_cores", "name": "AI Cores", "price": 4800, "category": "contraband", "description": "Illegal thinking machines, recovered from derelicts. Worth a fortune to the right buyer." }
+]

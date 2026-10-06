@@ -1,4 +1,12 @@
+import type { Mission } from './campaign/missions';
 import { type Fleet, STARTING_CREDITS, fleetLogistics, starterFleet } from './ships/fleet';
+
+/** Prices you saw at a market, for planning trade runs. */
+export interface PriceIntel {
+  day: number;
+  buy: number[];
+  sell: number[];
+}
 
 /** Player-side campaign state that persists across systems. */
 export interface PlayerState {
@@ -17,7 +25,32 @@ export interface PlayerState {
   visited: Set<number>;
   jumps: number;
   distanceLy: number;
+  /** Trade goods in the hold, by commodity id (supplies and fuel are kept separately). */
+  cargo: Record<string, number>;
+  /** Reputation per faction id, −100..100. */
+  reputation: Record<string, number>;
+  /** Faction the player holds a commission with. */
+  commission: string | null;
+  /** Day the last commission stipend was paid. */
+  stipendDay: number;
+  missions: Mission[];
+  /** Board missions already taken or finished (hidden from boards). */
+  takenMissions: string[];
+  /** People you've worked for: completed jobs improve their pay. */
+  contacts: Record<string, { name: string; title: string; faction: string; jobs: number }>;
+  /** Last seen prices per market (star index). */
+  intel: Record<number, PriceIntel>;
 }
+
+/** Starting reputation: friendly with the frontier, wary of the core, hated by pirates. */
+export const START_REPUTATION: Record<string, number> = {
+  hegemony: 0,
+  tricorp: 0,
+  league: 8,
+  ascendant: -5,
+  independent: 10,
+  pirates: -50,
+};
 
 export const SECONDS_PER_DAY = 86_400;
 /** In-game time a hyperjump takes. */
@@ -52,7 +85,28 @@ export function newPlayer(): PlayerState {
     visited: new Set(),
     jumps: 0,
     distanceLy: 0,
+    cargo: {},
+    reputation: { ...START_REPUTATION },
+    commission: null,
+    stipendDay: 0,
+    missions: [],
+    takenMissions: [],
+    contacts: {},
+    intel: {},
   });
+}
+
+/** Units of trade goods in the hold, including mission cargo. */
+export function goodsAboard(p: PlayerState): number {
+  let n = 0;
+  for (const v of Object.values(p.cargo)) n += v;
+  for (const m of p.missions) if ((m.type === 'delivery' || m.type === 'smuggle') && m.qty) n += m.qty;
+  return n;
+}
+
+/** Free hold space: supplies and trade goods share the fleet's cargo capacity. */
+export function cargoFree(p: PlayerState): number {
+  return Math.max(0, p.suppliesCapacity - p.supplies - goodsAboard(p));
 }
 
 /** Fuel scooping rate (t/s) at a given altitude above a star of radius r. */

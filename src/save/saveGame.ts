@@ -1,8 +1,11 @@
-import { type PlayerState, refreshLogistics } from '../player';
+import type { CampaignSnapshot } from '../campaign/campaign';
+import { hasCommodity, hasFaction } from '../campaign/defs';
+import type { Mission } from '../campaign/missions';
+import { type PlayerState, type PriceIntel, START_REPUTATION, refreshLogistics } from '../player';
 import { type Loadout, hasHull, hasHullmod, hasWeapon, hull } from '../ships/defs';
 import { type Fleet, MAX_CR, STARTING_CREDITS, starterFleet } from '../ships/fleet';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export type SavedTarget = { kind: 'local'; id: string } | { kind: 'system'; index: number } | null;
 
@@ -33,8 +36,18 @@ export interface SaveData {
     jumps: number;
     distanceLy: number;
     credits: number;
+    cargo: Record<string, number>;
+    reputation: Record<string, number>;
+    commission: string | null;
+    stipendDay: number;
+    missions: Mission[];
+    takenMissions: string[];
+    contacts: PlayerState['contacts'];
+    intel: Record<number, PriceIntel>;
   };
   fleet: Fleet;
+  /** The galaxy's economy, factions, fleets and news (null: start fresh from the seed). */
+  campaign: CampaignSnapshot | null;
   route: number[];
   target: SavedTarget;
 }
@@ -52,6 +65,10 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
   if ((out.version as number) === 1) {
     // v1 → v2: fleets and credits arrived with Phase 3. Everyone starts with the frigate they flew.
     out = { ...out, version: 2, fleet: starterFleet(), player: { ...(out.player as object), credits: STARTING_CREDITS } };
+  }
+  if ((out.version as number) === 2) {
+    // v2 → v3: the economy and factions (Phases 5–6) start fresh from the galaxy seed.
+    out = { ...out, version: 3, campaign: null };
   }
   return out;
 }
@@ -93,6 +110,50 @@ function parseFleet(raw: unknown): Fleet {
   return { ships, flagshipId };
 }
 
+const MISSION_TYPES = new Set(['delivery', 'procure', 'bounty', 'smuggle', 'survey', 'strike']);
+
+function parseMissions(raw: unknown): Mission[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((m): m is Mission => {
+    const x = m as Partial<Mission> | null;
+    return (
+      !!x &&
+      typeof x.id === 'string' &&
+      MISSION_TYPES.has(x.type as string) &&
+      isNum(x.dest) &&
+      isNum(x.origin) &&
+      isNum(x.reward) &&
+      isNum(x.deadline) &&
+      !!x.giver &&
+      hasFaction(x.giver.faction) &&
+      (x.commodity === undefined || hasCommodity(x.commodity))
+    );
+  });
+}
+
+function numberRecord(raw: unknown, keyOk: (k: string) => boolean): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw)) if (keyOk(k) && isNum(v)) out[k] = v;
+  return out;
+}
+
+function parseCampaign(raw: unknown): CampaignSnapshot | null {
+  const c = raw as Partial<CampaignSnapshot> | null;
+  if (!c || !isNum(c.day) || !Array.isArray(c.owner) || !Array.isArray(c.markets) || !Array.isArray(c.fleets) || !Array.isArray(c.relations)) return null;
+  return {
+    day: c.day,
+    rng: isNum(c.rng) ? c.rng : 1,
+    owner: c.owner,
+    relations: c.relations,
+    wars: Array.isArray(c.wars) ? c.wars : [],
+    fleets: c.fleets,
+    events: Array.isArray(c.events) ? c.events : [],
+    nextFleetId: isNum(c.nextFleetId) ? c.nextFleetId : 1,
+    raided: Array.isArray(c.raided) ? c.raided : [],
+    markets: c.markets,
+  };
+}
+
 /** Validate untrusted JSON (from storage or an imported file) into a SaveData. */
 export function parseSave(input: unknown): SaveData {
   if (!input || typeof input !== 'object') throw new SaveError('Save is not an object');
@@ -131,8 +192,17 @@ export function parseSave(input: unknown): SaveData {
       jumps: isNum(player.jumps) ? player.jumps : 0,
       distanceLy: isNum(player.distanceLy) ? player.distanceLy : 0,
       credits: isNum(player.credits) ? player.credits : STARTING_CREDITS,
+      cargo: numberRecord(player.cargo, hasCommodity),
+      reputation: { ...START_REPUTATION, ...numberRecord(player.reputation, hasFaction) },
+      commission: typeof player.commission === 'string' && hasFaction(player.commission) ? player.commission : null,
+      stipendDay: isNum(player.stipendDay) ? player.stipendDay : 0,
+      missions: parseMissions(player.missions),
+      takenMissions: Array.isArray(player.takenMissions) ? player.takenMissions.filter((x): x is string => typeof x === 'string') : [],
+      contacts: player.contacts && typeof player.contacts === 'object' ? player.contacts : {},
+      intel: player.intel && typeof player.intel === 'object' ? player.intel : {},
     },
     fleet: parseFleet(raw.fleet),
+    campaign: parseCampaign(raw.campaign),
     route,
     target,
   };
@@ -148,5 +218,13 @@ export function playerFromSave(base: PlayerState, s: SaveData): PlayerState {
     visited: new Set(s.player.visited),
     jumps: s.player.jumps,
     distanceLy: s.player.distanceLy,
+    cargo: { ...s.player.cargo },
+    reputation: { ...s.player.reputation },
+    commission: s.player.commission,
+    stipendDay: s.player.stipendDay,
+    missions: s.player.missions.map((m) => ({ ...m })),
+    takenMissions: [...s.player.takenMissions],
+    contacts: { ...s.player.contacts },
+    intel: { ...s.player.intel },
   });
 }

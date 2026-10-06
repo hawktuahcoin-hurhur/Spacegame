@@ -14,8 +14,24 @@ const sample: SaveData = {
   systemIndex: 42,
   time: 259200.5,
   ship: { frameId: 'planet-2', local: [1.5e7, -3, 4.25], velocity: [0, 10, 0], quaternion: [0, 0, 0, 1], throttle: 0.5 },
-  player: { fuel: 12.5, supplies: 40, visited: [42, 7], jumps: 3, distanceLy: 25.2, credits: 123456 },
+  player: {
+    fuel: 12.5,
+    supplies: 40,
+    visited: [42, 7],
+    jumps: 3,
+    distanceLy: 25.2,
+    credits: 123456,
+    cargo: { food: 120, drugs: 4 },
+    reputation: { hegemony: -12, tricorp: 0, league: 30, ascendant: -5, independent: 10, pirates: -50 },
+    commission: 'league',
+    stipendDay: 14,
+    missions: [],
+    takenMissions: ['m1-0-0'],
+    contacts: {},
+    intel: { 42: { day: 3, buy: [1, 2], sell: [3, 4] } },
+  },
   fleet: { flagshipId: 'ship-a', ships: [flag, escort] },
+  campaign: null,
   route: [42, 50, 60],
   target: { kind: 'system', index: 50 },
 };
@@ -56,6 +72,23 @@ describe('parseSave', () => {
     expect(s.fleet.ships).toHaveLength(1);
     expect(s.fleet.ships[0].loadout.hullId).toBe('kestrel');
     expect(s.player.credits).toBeGreaterThan(0);
+  });
+
+  it('migrates v2 saves to a fresh campaign with default reputation', () => {
+    const { campaign: _c, ...v2 } = sample;
+    void _c;
+    const s = parseSave({ ...v2, version: 2, player: { fuel: 10, supplies: 5, visited: [1], jumps: 0, distanceLy: 0, credits: 5 } });
+    expect(s.campaign).toBeNull();
+    expect(s.player.cargo).toEqual({});
+    expect(s.player.reputation.pirates).toBeLessThan(0);
+    expect(s.player.commission).toBeNull();
+  });
+
+  it('drops unknown commodities and factions', () => {
+    const s = parseSave({ ...sample, player: { ...sample.player, cargo: { food: 3, unobtainium: 9 }, reputation: { league: 5, martians: 50 }, commission: 'martians' } });
+    expect(s.player.cargo).toEqual({ food: 3 });
+    expect(s.player.reputation.martians).toBeUndefined();
+    expect(s.player.commission).toBeNull();
   });
 
   it('drops content that no longer exists instead of failing', () => {

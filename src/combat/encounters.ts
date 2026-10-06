@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng';
-import { type Loadout, HULLMODS, hull } from '../ships/defs';
+import { type Loadout, type ShipStyle, HULLMODS, hull } from '../ships/defs';
 import { autofit, cloneLoadout, defaultLoadout } from '../ships/fitting';
 import { type Fleet, type ShipInstance, MAX_FLEET_SIZE, createShip, shipName } from '../ships/fleet';
 import { CombatShip, fleetPoints } from './ship';
@@ -27,8 +27,11 @@ export interface EnemyShip {
 
 export interface EnemyFleet {
   name: string;
-  faction: 'pirate';
+  /** Faction id (see content/factions.json). */
+  faction: string;
   ships: EnemyShip[];
+  /** Mission this fight belongs to (bounty/strike), if any. */
+  missionId?: string;
 }
 
 const PIRATE_POOL: [string, number, number][] = [
@@ -88,7 +91,41 @@ export function pirateFleet(seed: number, playerStrength: number, danger: number
     ships.push({ id: `pirate-${seed}-${ships.length}`, name, loadout, hull: rng.range(0.75, 1), cr: rng.range(0.55, 0.7) });
     total += fleetPoints(loadout);
   }
-  return { name: `${rng.pick(BOSS)}'s ${rng.pick(FLEET_NAMES)}`, faction: 'pirate', ships };
+  return { name: `${rng.pick(BOSS)}'s ${rng.pick(FLEET_NAMES)}`, faction: 'pirates', ships };
+}
+
+const FACTION_FLEET_NAMES: Record<string, string[]> = {
+  hegemony: ['Patrol Group', 'Picket Squadron', 'Line Detachment', 'Security Flotilla'],
+  tricorp: ['Asset Protection Group', 'Security Detail', 'Response Team'],
+  league: ['Convoy Escort', 'Merchant Guard', 'Militia Squadron'],
+  ascendant: ['Crusade Band', 'Pathfinder Host', 'Zealot Squadron'],
+  independent: ['Militia Patrol', 'Defence Picket'],
+  pirates: ['Raiders'],
+};
+
+/** A regular faction fleet (patrol, war group) of roughly `strength` fleet points. */
+export function factionFleet(factionId: string, hulls: Record<string, number>, style: ShipStyle, seed: number, strength: number, label?: string): EnemyFleet {
+  const rng = new Rng(seed);
+  const want = Math.max(4, strength);
+  const pool = Object.entries(hulls);
+  const ships: EnemyShip[] = [];
+  const taken = new Set<string>();
+  let total = 0;
+  for (let guard = 0; guard < 40 && total < want && ships.length < 8; guard++) {
+    const weights = pool.map(([id, w]) => (fleetPoints(defaultLoadout(id)) > (want - total) * 1.6 && ships.length ? 0 : w));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    if (sum <= 0) break;
+    let r = rng.next() * sum;
+    let idx = 0;
+    while (r > weights[idx]) r -= weights[idx++];
+    const id = pool[idx][0];
+    const loadout = rng.next() < 0.7 ? defaultLoadout(id) : autofit(id);
+    const name = shipName(id, rng, taken, style);
+    taken.add(name);
+    ships.push({ id: `${factionId}-${seed}-${ships.length}`, name, loadout, hull: 1, cr: 0.7 });
+    total += fleetPoints(loadout);
+  }
+  return { name: label ?? rng.pick(FACTION_FLEET_NAMES[factionId] ?? ['Squadron']), faction: factionId, ships };
 }
 
 /** Deployment readiness cost per hull size. */

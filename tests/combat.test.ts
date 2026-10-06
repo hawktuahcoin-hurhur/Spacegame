@@ -30,7 +30,7 @@ function demoBattle(seed: number) {
   const ships = ['vanguard', 'harrier', 'lumen', 'kestrel', 'wisp'].map((id, i) => createShip(id, `P${i}`, `p${i}`));
   const enemy = {
     name: 'test',
-    faction: 'pirate' as const,
+    faction: 'pirates',
     ships: ['corsair', 'bastion', 'jackal', 'jackal', 'harrier'].map((id, i) => ({ id: `e${i}`, name: `E${i}`, loadout: defaultLoadout(id), hull: 1, cr: 0.7 })),
   };
   deployFleets(sim, { ships, flagshipId: ships[0].id }, enemy, { playerYaw: 0, enemyDir: new THREE.Vector3(0, 0, -1), distance: 3600 });

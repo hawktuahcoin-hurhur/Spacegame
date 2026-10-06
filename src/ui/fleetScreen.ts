@@ -20,8 +20,11 @@ import {
 } from '../ships/fitting';
 import { MAX_CR, MAX_FLEET_SIZE, RESALE_FACTOR, type ShipInstance, createShip, fleetLogistics, shipName } from '../ships/fleet';
 import { type ShipVisual, buildShip } from '../ships/shipBuilder';
+import { FACTIONS } from '../campaign/defs';
+import { rep as repOf } from '../campaign/trade';
+import { type StationContext, renderBar, renderMarket, renderStationInfo } from './stationTabs';
 
-export type FleetTab = 'fleet' | 'shipyard' | 'services';
+export type FleetTab = 'fleet' | 'market' | 'bar' | 'shipyard' | 'services';
 
 export interface DockInfo {
   stationName: string;
@@ -37,6 +40,10 @@ export interface FleetScreenHost {
   refuel(): void;
   /** Launch a no-risk combat simulation against a pirate fleet. */
   simulate(): void;
+  /** Market, bar and politics of the station you're docked at. */
+  station: StationContext | null;
+  /** Cost to top up fuel and supplies here. */
+  refuelCost(): number;
   toast(msg: string, kind?: '' | 'warn' | 'good'): void;
   close(): void;
 }
@@ -222,6 +229,8 @@ export class FleetScreen {
   private readonly right: HTMLDivElement;
   private readonly bottom: HTMLDivElement;
   private readonly markers: HTMLDivElement;
+  /** Full-width panel for the market and bar. */
+  private readonly full: HTMLDivElement;
   private readonly view: RefitView;
   private markerEls = new Map<string, HTMLButtonElement>();
 
@@ -237,6 +246,7 @@ export class FleetScreen {
     this.right = el('div', 'fs-right', this.root);
     this.bottom = el('div', 'fs-bottom', this.root);
     this.markers = el('div', 'fs-markers', this.root);
+    this.full = el('div', 'fs-full hidden', this.root);
   }
 
   private get player(): PlayerState {
@@ -270,6 +280,21 @@ export class FleetScreen {
   /** Re-render all panels from current state. */
   refresh(): void {
     this.renderHeader();
+    const fullTab = this.tab === 'market' || this.tab === 'bar';
+    this.full.classList.toggle('hidden', !fullTab);
+    this.right.classList.toggle('hidden', fullTab);
+    this.bottom.classList.toggle('hidden', fullTab);
+    this.markers.classList.toggle('hidden', fullTab);
+    const st = this.host.station;
+    if (fullTab && st) {
+      const scroll = this.full.scrollTop;
+      if (this.tab === 'market') {
+        renderStationInfo(this.left, st);
+        renderMarket(this.full, st);
+      } else renderBar(this.left, this.full, st);
+      this.full.scrollTop = scroll;
+      return;
+    }
     if (this.tab === 'fleet') this.renderFleetTab();
     else if (this.tab === 'shipyard') this.renderShipyardTab();
     else this.renderServicesTab();
@@ -286,6 +311,8 @@ export class FleetScreen {
     const dock = this.host.dock;
     const tabs: [FleetTab, string][] = [
       ['fleet', 'Fleet & Refit'],
+      ['market', 'Market'],
+      ['bar', 'Bar'],
       ['shipyard', 'Shipyard'],
       ['services', 'Services'],
     ];
@@ -638,10 +665,11 @@ export class FleetScreen {
     this.clearMarkers();
     const full = this.player.fleet.ships.length >= MAX_FLEET_SIZE;
     const poor = this.player.credits < h.cost;
+    const locked = this.militaryLock(h.id);
     this.bottom.innerHTML = `<div class="fs-yard">
       <div class="yh"><h2>${h.name}<small>${h.designation} · ${h.manufacturer}</small></h2><p>${h.description}</p></div>
       <div class="yb"><div class="price">${credits(h.cost)}</div>
-        <button class="primary" data-act="buy" ${full || poor ? 'disabled' : ''}>${full ? 'Fleet is full' : poor ? 'Not enough credits' : 'Purchase'}</button>
+        <button class="primary" data-act="buy" ${full || poor || locked ? 'disabled' : ''}>${locked ? locked : full ? 'Fleet is full' : poor ? 'Not enough credits' : 'Purchase'}</button>
         <small>Comes with its factory loadout. Weapons and hullmods are free to refit until markets open.</small></div></div>`;
     this.bottom.querySelector('[data-act=buy]')?.addEventListener('click', () => {
       const taken = new Set(this.player.fleet.ships.map((s) => s.name));
@@ -653,6 +681,17 @@ export class FleetScreen {
       this.tab = 'fleet';
       this.commit();
     });
+  }
+
+  /** Warships of the station's own navy are sold only to friends and officers. */
+  private militaryLock(hullId: string): string | null {
+    const st = this.host.station;
+    if (!st) return null;
+    const f = FACTIONS[st.campaign.owner[st.star]];
+    const h = hullDef(hullId);
+    if (!f.military || h.style !== f.style || (h.size !== 'cruiser' && h.size !== 'capital')) return null;
+    if (this.player.commission === f.id || repOf(this.player, f.id) >= 25) return null;
+    return `Requires ${f.short} commission or Friendly standing`;
   }
 
   // ------------------------------------------------------------ services
@@ -667,7 +706,7 @@ export class FleetScreen {
     const repair = repairCost(p.fleet.ships);
     const damaged = p.fleet.ships.filter((x) => x.loadout.hullmods.some((m) => isDmod(m)));
     this.left.innerHTML = `<h3>Station services</h3>
-      <p class="fs-note">Markets, missions and crew hiring open in a later update. Docking crews top up fuel and supplies for free in the meantime.</p>
+      <p class="fs-note">Refuelling buys fuel and supplies at this market's prices. Trade goods are in the Market tab; jobs and commissions in the Bar.</p>
       <h3>Fleet condition</h3>
       <div class="fs-roster">${p.fleet.ships
         .map((x) => `<div class="fs-card static"><div class="n">${x.name}</div><div class="h">${hullDef(x.loadout.hullId).name}</div>${shipCondition(x)}</div>`)
@@ -678,7 +717,7 @@ export class FleetScreen {
       <div class="svc"><div class="sn">Fuel</div><div class="bar fuel"><div style="width:${(p.fuel / p.fuelCapacity) * 100}%"></div></div><div class="sv">${Math.round(p.fuel)} / ${p.fuelCapacity} t</div></div>
       <div class="svc"><div class="sn">Supplies</div><div class="bar sup"><div style="width:${(p.supplies / p.suppliesCapacity) * 100}%"></div></div><div class="sv">${Math.round(p.supplies)} / ${p.suppliesCapacity}</div></div>
       <div class="svc-buttons">
-        <button class="primary" data-act="refuel" ${needFuel < 0.05 && needSup < 0.05 ? 'disabled' : ''}>${needFuel < 0.05 && needSup < 0.05 ? 'Tanks and holds full' : 'Refuel & resupply'}</button>
+        <button class="primary" data-act="refuel" ${needFuel < 0.05 && needSup < 0.05 ? 'disabled' : ''}>${needFuel < 0.05 && needSup < 0.05 ? 'Tanks and holds full' : `Refuel & resupply ${credits(this.host.refuelCost())}`}</button>
         <button class="primary" data-act="repair" ${repair <= 0 || p.credits < repair ? 'disabled' : ''} title="Restore hull integrity and combat readiness">${repair <= 0 ? 'Fleet fully repaired' : `Repair & recommission ${credits(repair)}`}</button>
         <button data-act="sim" title="Fight a simulated pirate fleet: no losses, no rewards">Combat simulator</button>
       </div>

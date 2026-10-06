@@ -2,6 +2,30 @@ import * as THREE from 'three';
 import { AudioEngine } from './audio/audio';
 import { type BattleReport, type EnemyFleet, applyReport, fleetStrength, pirateFleet, systemDanger } from './combat/encounters';
 import { yawOf } from './combat/geometry';
+import { Campaign } from './campaign/campaign';
+import { FACTIONS, PIRATES, ci, fi } from './campaign/defs';
+import { BOARD_PERIOD, type Mission, generateBoard } from './campaign/missions';
+import {
+  KILL_BOUNTY,
+  adjustRep,
+  cargoValue,
+  contraband,
+  dockingAllowed,
+  expireMissions,
+  hostileTo,
+  marketLines,
+  missionVictory,
+  missionsOnArrive,
+  missionsOnDock,
+  rep as repOf,
+  recordIntel,
+  stipend,
+  type MissionUpdate,
+} from './campaign/trade';
+import { factionFleet } from './combat/encounters';
+import { CommDialog } from './ui/comm';
+import { IntelScreen } from './ui/intel';
+import type { StationContext } from './ui/stationTabs';
 import { CombatSession, EncounterDirector } from './combat/session';
 import type { CombatShip } from './combat/ship';
 import type { CombatEvent } from './combat/sim';
@@ -11,7 +35,7 @@ import { type GalaxyDef, type GalaxyStar, starDistance } from './galaxy/galaxyGe
 import { jumpFuelCost, type Route } from './galaxy/route';
 import { generateSystem } from './galaxy/systemGen';
 import { PLANET_TYPE_LABEL } from './planets/planetTypes';
-import { JUMP_DURATION_DAYS, type PlayerState, SECONDS_PER_DAY, newPlayer, refreshLogistics, scoopRate } from './player';
+import { JUMP_DURATION_DAYS, type PlayerState, SECONDS_PER_DAY, cargoFree, goodsAboard, newPlayer, refreshLogistics, scoopRate } from './player';
 import { PlanetBaker } from './render/bake/planetBaker';
 import { ChaseCamera } from './render/chaseCamera';
 import { HyperspaceTunnel } from './render/hyperspace';
@@ -128,6 +152,17 @@ export class Game {
   private combatAvatar: CombatShip | null = null;
   private readonly listener = { pos: new THREE.Vector3(), right: new THREE.Vector3(1, 0, 0) };
   private readonly encounterRng = new Rng(4242);
+  /** The living galaxy: markets, factions, fleets, news (Phases 5–6). */
+  campaign: Campaign | null = null;
+  readonly intel = new IntelScreen();
+  readonly comm = new CommDialog();
+  private readonly tradeRng = new Rng(777);
+  /** Bounty/strike target waiting to be found in this system. */
+  private missionHunt: { mission: Mission; t: number } | null = null;
+  /** Station we last processed docking for (missions, price intel). */
+  private dockedAt = -1;
+  /** Cooldown before the next patrol hail (s of game time). */
+  private patrolCooldown = 60;
   /** Debug/QA: watch a combat ship from a fixed offset instead of the chase camera. */
   private spectate: { ship: CombatShip; offset: THREE.Vector3 } | null = null;
 
@@ -198,6 +233,10 @@ export class Game {
       },
       refuel: () => this.resupply(),
       simulate: () => this.startSimulation(),
+      get station() {
+        return game.stationContext();
+      },
+      refuelCost: () => this.refuelCost(),
       toast: (m, k) => this.hud.toast(m, k),
       close: () => this.toggleFleetScreen(),
     });
@@ -245,13 +284,14 @@ export class Game {
   }
 
   get anyMapOpen(): boolean {
-    return !!(this.map?.open || this.galaxyMap?.open || this.fleetScreen?.open || this.tactical?.open || this.aftermath?.open);
+    return !!(this.map?.open || this.galaxyMap?.open || this.fleetScreen?.open || this.tactical?.open || this.aftermath?.open || this.intel?.open || this.comm?.open);
   }
 
   /** Station services available right now (docked = within reach of a station, slow, normal flight). */
   dockInfo(): { stationName: string; stock: string[] } | null {
     const st = this.resupplyStation();
     if (!st || st.kind !== 'station') return null;
+    if (this.campaign && !dockingAllowed(this.campaign, this.player, this.systemIndex).ok) return null;
     const region = this.galaxy.stars[this.systemIndex].region;
     return { stationName: st.name, stock: shipyardStock((st as unknown as { def: { seed: number } }).def.seed, region) };
   }
@@ -315,6 +355,10 @@ export class Game {
     this.route = null;
     this.systemTarget = null;
     this.time = 0;
+    onProgress(0.05, 'Simulating the galactic economy');
+    await new Promise((r) => setTimeout(r, 0));
+    this.campaign = Campaign.create(this.galaxy);
+    this.campaign.fresh = [];
     const built = await this.buildSystem(this.galaxy.startIndex, onProgress);
     this.arrive(built, { kind: 'spawn' });
   }
@@ -328,6 +372,12 @@ export class Game {
     this.player = playerFromSave(newPlayer(), save);
     this.rebuildFleetVisuals();
     this.time = save.time;
+    onProgress(0.05, 'Restoring the galactic economy');
+    await new Promise((r) => setTimeout(r, 0));
+    this.campaign = save.campaign ? Campaign.restore(this.galaxy, save.campaign) : Campaign.create(this.galaxy);
+    // Older saves (or a clock ahead of the snapshot) catch up day by day.
+    this.campaign.advanceTo(this.day - 1);
+    this.campaign.fresh = [];
     this.route = save.route.length >= 2 ? this.routeFromStars(save.route) : null;
     this.systemTarget = save.target?.kind === 'system' ? (this.galaxy.stars[save.target.index] ?? null) : null;
     const built = await this.buildSystem(save.systemIndex, onProgress);
@@ -364,6 +414,13 @@ export class Game {
     const firstVisit = !this.player.visited.has(this.systemIndex);
     let hadRoute = false;
     this.player.visited.add(this.systemIndex);
+    this.dockedAt = -1;
+    this.missionHunt = null;
+    if (this.campaign) {
+      this.reportMissions(missionsOnArrive(this.player, this.systemIndex));
+      const hunt = this.player.missions.find((m) => (m.type === 'bounty' || m.type === 'strike') && m.dest === this.systemIndex);
+      if (hunt) this.missionHunt = { mission: hunt, t: 12 };
+    }
 
     if (how.kind === 'spawn') this.placeAtStation();
     else if (how.kind === 'save') {
@@ -599,7 +656,16 @@ export class Game {
         jumps: this.player.jumps,
         distanceLy: this.player.distanceLy,
         credits: this.player.credits,
+        cargo: { ...this.player.cargo },
+        reputation: { ...this.player.reputation },
+        commission: this.player.commission,
+        stipendDay: this.player.stipendDay,
+        missions: this.player.missions.map((m) => ({ ...m })),
+        takenMissions: [...this.player.takenMissions],
+        contacts: { ...this.player.contacts },
+        intel: { ...this.player.intel },
       },
+      campaign: this.campaign?.snapshot() ?? null,
       fleet: { flagshipId: this.player.fleet.flagshipId, ships: this.player.fleet.ships.map((x) => ({ ...x, loadout: { ...x.loadout, weapons: { ...x.loadout.weapons }, hullmods: [...x.loadout.hullmods] } })) },
       route: this.route?.stars ?? [],
       target: this.target ? { kind: 'local', id: this.target.id } : this.systemTarget ? { kind: 'system', index: this.systemTarget.index } : null,
@@ -678,6 +744,7 @@ export class Game {
       jumpRange: this.player.jumpRange,
       visited: this.player.visited,
       systemTarget: this.systemTarget?.index ?? null,
+      overlay: this.campaign ? this.galaxyOverlay(this.campaign) : undefined,
     };
   }
 
@@ -862,10 +929,12 @@ export class Game {
   private fixedUpdate(dt: number): void {
     if (this.paused || !this.universe) return;
     const cb = this.combat;
+    if (this.comm.open) return;
     if (cb) {
       if (cb.state === 'report' || (this.tactical.open && this.tactical.paused)) return;
       dt *= cb.timeScale;
     }
+    this.syncCampaign();
     if (this.jump) this.updateJump(dt);
     if (this.inTunnel) return;
     this.time += dt;
@@ -896,7 +965,11 @@ export class Game {
     if (!cb) this.updateFrame();
     this.collide();
     if (cb) this.combatStep(dt);
-    else this.updateEncounters(dt);
+    else {
+      this.updateEncounters(dt);
+      this.updateCampaignEncounters(dt);
+      this.checkDocking();
+    }
 
     // Fuel scooping in the star's corona.
     const star = this.universe.star;
@@ -958,13 +1031,35 @@ export class Game {
     const st = this.resupplyStation();
     if (!st) return;
     const p = this.player;
-    if (p.fuel >= p.fuelCapacity - 0.01 && p.supplies >= p.suppliesCapacity - 0.01) {
+    if (p.fuel >= p.fuelCapacity - 0.99 && (p.supplies >= p.suppliesCapacity - 0.99 || cargoFree(p) < 1)) {
       this.hud.toast('Tanks and holds already full');
       return;
     }
-    p.fuel = p.fuelCapacity;
-    p.supplies = p.suppliesCapacity;
-    this.hud.toast(`${st.name}: refuelled and resupplied`, 'good');
+    const c = this.campaign;
+    let cost = 0;
+    if (c) {
+      const lines = marketLines(c, p, this.systemIndex);
+      const wantFuel = Math.max(0, Math.floor(p.fuelCapacity - p.fuel));
+      const wantSup = Math.max(0, Math.floor(Math.min(p.suppliesCapacity - p.supplies, cargoFree(p))));
+      const afford = (n: number, unit: number) => Math.min(n, Math.floor(Math.max(0, p.credits - cost) / Math.max(unit, 1)));
+      const fuel = Math.min(afford(wantFuel, lines[ci('fuel')].buy), Math.floor(c.states[this.systemIndex].stock[ci('fuel')]));
+      cost += fuel * lines[ci('fuel')].buy;
+      const sup = Math.min(afford(wantSup, lines[ci('supplies')].buy), Math.floor(c.states[this.systemIndex].stock[ci('supplies')]));
+      cost += sup * lines[ci('supplies')].buy;
+      if (fuel + sup <= 0) {
+        this.hud.toast(p.credits < 50 ? 'Not enough credits to refuel' : 'Nothing to buy here — the station is out of stock', 'warn');
+        return;
+      }
+      p.fuel += fuel;
+      p.supplies += sup;
+      p.credits -= cost;
+      c.states[this.systemIndex].stock[ci('fuel')] -= fuel;
+      c.states[this.systemIndex].stock[ci('supplies')] -= sup;
+    } else {
+      p.fuel = p.fuelCapacity;
+      p.supplies = p.suppliesCapacity;
+    }
+    this.hud.toast(`${st.name}: refuelled and resupplied${cost ? ` for ${Math.round(cost).toLocaleString()} ¢` : ''}`, 'good');
     this.audio.blip(520, 0.12);
     void this.saveTo('auto');
   }
@@ -983,6 +1078,12 @@ export class Game {
       this.toggleFleetScreen();
       return;
     }
+    if (this.comm.open) return;
+    if (this.intel.open && (i.pressed('Escape') || i.pressed('KeyI'))) {
+      this.toggleIntel();
+      return;
+    }
+    if (i.pressed('KeyI') && !cb && !this.anyMapOpen && !this.inTunnel) this.toggleIntel();
     if (i.pressed('Escape')) {
       if (this.fleetScreen.open) this.toggleFleetScreen();
       else if (this.map.open) this.toggleMap();
@@ -1015,7 +1116,11 @@ export class Game {
     }
     if (i.pressed('KeyX')) this.pendingZero = true;
     if (i.pressed('KeyR') && !cb) {
-      if (this.resupplyStation()) this.toggleFleetScreen('fleet');
+      const why = this.campaign && this.resupplyStation() ? dockingAllowed(this.campaign, this.player, this.systemIndex) : null;
+      if (why && !why.ok) {
+        this.hud.toast(why.why ?? 'Docking denied', 'warn');
+        this.audio.warn();
+      } else if (this.resupplyStation()) this.toggleFleetScreen('fleet');
       else this.hud.toast('No station in reach — fly within 6 km and slow down to dock', 'warn');
     }
     if (i.pressed('KeyF') && !cb) this.toggleFleetScreen('fleet');
@@ -1396,7 +1501,9 @@ export class Game {
     if (warning && !this.combat)
       banner = { title: `Interdiction ${Math.max(1, Math.ceil(warning.t))}`, sub: `${warning.enemy.name} are pulling you out of supercruise` };
     const station = this.combat ? null : this.resupplyStation();
-    const prompt = station ? `[R] Dock at ${station.name}` : null;
+    const denied = station && this.campaign ? dockingAllowed(this.campaign, this.player, this.systemIndex) : null;
+    const prompt = station ? (denied && !denied.ok ? `Docking denied — ${denied.why}` : `[R] Dock at ${station.name}`) : null;
+    this.updateCargoHud();
 
     this.hud.update(
       {
@@ -1425,6 +1532,357 @@ export class Game {
       w,
       h,
     );
+  }
+
+  // ---------------------------------------------------------------- campaign
+
+  /** Market, bar and politics of the station we're docked at. */
+  stationContext(): StationContext | null {
+    const c = this.campaign;
+    if (!c || !this.dockInfo()) return null;
+    const star = this.systemIndex;
+    return {
+      campaign: c,
+      player: this.player,
+      star,
+      rng: this.tradeRng,
+      toast: (m, k) => this.hud.toast(m, k),
+      changed: () => {
+        refreshLogistics(this.player);
+        recordIntel(c, this.player, star);
+        this.fleetScreen.refresh();
+      },
+      board: () => this.missionBoard(star),
+    };
+  }
+
+  /** Jobs on offer at a station (minus the ones already taken). */
+  missionBoard(star: number): Mission[] {
+    const c = this.campaign!;
+    const p = this.player;
+    const period = Math.floor(c.day / BOARD_PERIOD);
+    return generateBoard(c, star, period, {
+      rep: (f) => repOf(p, f),
+      commission: p.commission,
+      visited: p.visited,
+      strength: fleetStrength(p.fleet),
+      cargoSpace: Math.max(10, Math.floor(cargoFree(p))),
+    }).filter((m) => !p.takenMissions.includes(m.id));
+  }
+
+  /** What topping up fuel and supplies would cost here. */
+  refuelCost(): number {
+    const c = this.campaign;
+    const p = this.player;
+    if (!c) return 0;
+    const lines = marketLines(c, p, this.systemIndex);
+    const fuel = Math.max(0, Math.floor(p.fuelCapacity - p.fuel));
+    const sup = Math.max(0, Math.floor(Math.min(p.suppliesCapacity - p.supplies, cargoFree(p))));
+    return fuel * lines[ci('fuel')].buy + sup * lines[ci('supplies')].buy;
+  }
+
+  /** Advance the galaxy to today and react to what happened. */
+  private syncCampaign(): void {
+    const c = this.campaign;
+    if (!c || c.day >= this.day - 1) return;
+    const p = this.player;
+    const events = c.advanceTo(this.day - 1);
+    c.fresh = [];
+    const here = this.systemIndex;
+    let shown = 0;
+    for (const e of events) {
+      const near = c.distance(e.star, here) < 20;
+      if ((e.major || (near && (e.kind === 'raid' || e.kind === 'shortage' || e.kind === 'boom'))) && shown < 3) {
+        shown++;
+        setTimeout(() => this.hud.toast(e.text.length > 110 ? `${e.text.slice(0, 107)}…` : e.text, e.kind === 'war' || e.kind === 'raid' || e.kind === 'captured' ? 'warn' : ''), 600 + shown * 1600);
+      }
+      // A new war against your commissioning faction makes you an enemy of the other side.
+      if (e.kind === 'war' && p.commission) {
+        const mine = fi(p.commission);
+        for (const f of e.factions) if (f !== mine && e.factions.includes(mine) && repOf(p, FACTIONS[f].id) > -55) p.reputation[FACTIONS[f].id] = -55;
+      }
+    }
+    this.reportMissions(expireMissions(c, p));
+    // Commission stipend every 7 days.
+    if (p.commission && c.day - p.stipendDay >= 7) {
+      const weeks = Math.floor((c.day - p.stipendDay) / 7);
+      const pay = stipend(c, fi(p.commission)) * weeks;
+      p.stipendDay += weeks * 7;
+      p.credits += pay;
+      this.hud.toast(`${FACTIONS[fi(p.commission)].short} stipend: +${pay.toLocaleString()} ¢`, 'good');
+    }
+  }
+
+  private reportMissions(u: MissionUpdate): void {
+    for (const { mission, reward } of u.completed) {
+      this.hud.toast(`Job complete: ${mission.title} — +${reward.toLocaleString()} ¢`, 'good');
+      this.audio.blip(880, 0.1);
+    }
+    for (const m of u.failed) this.hud.toast(`Job failed: ${m.title} (deadline passed)`, 'warn');
+    for (const n of u.notes) this.hud.toast(n);
+  }
+
+  /** First time we're in docking range of a station on this visit: hand in jobs, log prices. */
+  private checkDocking(): void {
+    const c = this.campaign;
+    if (!c || !this.resupplyStation() || this.dockedAt === this.systemIndex) return;
+    if (!dockingAllowed(c, this.player, this.systemIndex).ok) return;
+    this.dockedAt = this.systemIndex;
+    recordIntel(c, this.player, this.systemIndex);
+    this.reportMissions(missionsOnDock(c, this.player, this.systemIndex));
+  }
+
+  /** Patrols, hostile navies and mission targets in the current system. */
+  private updateCampaignEncounters(dt: number): void {
+    const c = this.campaign;
+    if (!c || this.jump || this.encounters.warning || this.comm.open || this.aftermath.open) return;
+    const p = this.player;
+    // Mission targets: once you've been in the system a little while, they show up.
+    if (this.missionHunt) {
+      this.missionHunt.t -= dt;
+      if (this.missionHunt.t <= 0 && this.ship.mode !== 'charging') {
+        const m = this.missionHunt.mission;
+        this.missionHunt = null;
+        if (p.missions.includes(m) && m.enemy) this.huntFound(m);
+      }
+      return;
+    }
+    if (this.ship.mode !== 'supercruise' || this.encounters.cooldown > 0) return;
+    this.patrolCooldown -= dt;
+    if (this.patrolCooldown > 0) return;
+    const fleets = c.fleetsAt(this.systemIndex).filter((f) => f.faction !== PIRATES);
+    // Hostile navies hunt you down.
+    const hostile = fleets.find((f) => hostileTo(c, p, f.faction));
+    if (hostile && this.encounterRng.next() < 0.01 * dt) {
+      this.patrolCooldown = 90;
+      const fd = FACTIONS[hostile.faction];
+      const enemy = factionFleet(fd.id, fd.hulls, fd.style, this.encounterRng.int(1, 1e9), Math.max(8, fleetStrength(p.fleet) * this.encounterRng.range(0.7, 1.2)));
+      this.encounters.warning = { t: EncounterDirector.WARNING, enemy };
+      this.hud.toast(`Interdiction! A ${fd.short} ${enemy.name.toLowerCase()} is pulling you out of supercruise`, 'warn');
+      this.audio.alarm();
+      return;
+    }
+    // The local navy stops and scans traffic.
+    const patrol = fleets.find((f) => f.kind === 'patrol' && f.faction === c.owner[this.systemIndex] && FACTIONS[f.faction].military);
+    if (patrol && this.encounterRng.next() < 0.006 * dt) {
+      this.patrolCooldown = 150;
+      this.patrolHail(patrol.faction);
+    }
+  }
+
+  private pauseForComm(): void {
+    if (this.ship.mode !== 'normal') this.ship.dropOut('Hailed');
+    this.input.allowPointerLock = false;
+    this.input.releasePointer();
+  }
+
+  private afterComm(): void {
+    setTimeout(() => (this.input.allowPointerLock = true), 50);
+  }
+
+  /** A customs patrol demands a cargo scan. */
+  private patrolHail(faction: number): void {
+    const c = this.campaign!;
+    const p = this.player;
+    const f = FACTIONS[faction];
+    const hot = contraband(p, faction);
+    this.pauseForComm();
+    this.audio.blip(500, 0.2);
+    const strength = Math.max(10, fleetStrength(p.fleet) * this.encounterRng.range(0.9, 1.3));
+    const fight = () => {
+      adjustRep(p, f.id, -15);
+      const enemy = factionFleet(f.id, f.hulls, f.style, this.encounterRng.int(1, 1e9), strength, `${f.short} customs patrol`);
+      this.afterComm();
+      this.startCombat(enemy, { distance: 2400 });
+    };
+    if (!hot.length) {
+      this.comm.show({
+        faction: f.name,
+        color: f.color,
+        speaker: `${f.short} customs patrol`,
+        text: `"This is a ${f.short} customs patrol. Hold your course for a routine cargo scan."`,
+        options: [
+          {
+            label: 'Comply with the scan',
+            kind: 'primary',
+            action: () => {
+              adjustRep(p, f.id, 1);
+              this.hud.toast(`Scan clean. The ${f.short} patrol waves you on.`, 'good');
+              this.afterComm();
+            },
+          },
+          { label: 'Refuse and open fire (reputation −15)', kind: 'danger', action: fight },
+        ],
+      });
+      return;
+    }
+    const value = cargoValue(hot);
+    const fine = Math.round(value * 0.4 + 2000);
+    const items = hot.map((x) => `${x.qty} ${x.commodity.replace('_', ' ')}`).join(', ');
+    this.comm.show({
+      faction: f.name,
+      color: f.color,
+      speaker: `${f.short} customs patrol`,
+      text: `"Scanners show contraband aboard: <b>${items}</b>. Cut your drive and prepare to be boarded. Resistance will be met with force."`,
+      options: [
+        {
+          label: `Surrender the goods and pay a ${fine.toLocaleString()} ¢ fine (reputation −10)`,
+          action: () => {
+            for (const x of hot) {
+              if (x.mission) p.missions = p.missions.filter((m) => m !== x.mission);
+              else delete p.cargo[x.commodity];
+            }
+            p.credits -= Math.min(p.credits, fine);
+            adjustRep(p, f.id, -10);
+            this.hud.toast(`Contraband confiscated and fined ${fine.toLocaleString()} ¢`, 'warn');
+            this.afterComm();
+          },
+        },
+        {
+          label: `Bribe the officer (${Math.round(fine * 0.6).toLocaleString()} ¢, might not work)`,
+          action: () => {
+            const bribe = Math.round(fine * 0.6);
+            if (p.credits >= bribe && this.encounterRng.next() < 0.55 + Math.max(0, repOf(p, f.id)) / 100) {
+              p.credits -= bribe;
+              this.hud.toast('The officer pockets the credits. "Scan complete — nothing to report."', 'good');
+              this.afterComm();
+            } else {
+              this.hud.toast('"Attempting to bribe an officer? Open fire!"', 'warn');
+              fight();
+            }
+          },
+        },
+        { label: 'Make a run for it — fight your way out (reputation −15)', kind: 'danger', action: fight },
+      ],
+    });
+    void c;
+  }
+
+  /** You've tracked down a bounty or strike target. */
+  private huntFound(m: Mission): void {
+    const e = m.enemy!;
+    const f = FACTIONS[fi(e.faction)];
+    const enemy =
+      e.faction === 'pirates'
+        ? pirateFleet(e.seed, e.strength / Math.max(0.55 + this.danger() * 0.55, 0.5), this.danger())
+        : factionFleet(f.id, f.hulls, f.style, e.seed, e.strength, e.name);
+    enemy.name = e.name;
+    enemy.missionId = m.id;
+    this.pauseForComm();
+    this.comm.show({
+      faction: f.name,
+      color: f.color,
+      speaker: e.name,
+      text:
+        m.type === 'bounty'
+          ? `Your sensors pick up a pirate band hiding in the ${this.galaxy.stars[this.systemIndex].name} system. "Well, look who came hunting. You'll make a fine trophy."`
+          : `${f.short} warships at ${this.galaxy.stars[this.systemIndex].name}: "Unidentified fleet, you are in a war zone. Turn back or be destroyed."`,
+      options: [
+        {
+          label: 'Engage',
+          kind: 'danger',
+          action: () => {
+            this.afterComm();
+            this.startCombat(enemy, { distance: 3200 });
+          },
+        },
+        {
+          label: 'Not now — come back later',
+          action: () => {
+            this.missionHunt = { mission: m, t: 60 };
+            this.afterComm();
+          },
+        },
+      ],
+    });
+  }
+
+  /** Reputation, bounties and mission credit after a fight. */
+  private combatPolitics(report: BattleReport): void {
+    const c = this.campaign;
+    const cb = this.combat;
+    if (!c || !cb || cb.simulated) return;
+    const p = this.player;
+    const f = fi(cb.enemy.faction);
+    const kills = report.destroyed.filter((d) => d.side === 1).length;
+    if (f === PIRATES) {
+      // Everyone else appreciates dead pirates.
+      if (kills) adjustRep(p, FACTIONS[c.owner[this.systemIndex]].id, kills * 0.5);
+    } else if (kills) adjustRep(p, FACTIONS[f].id, -3 * kills);
+    if (p.commission && kills && (c.atWar(fi(p.commission), f) || f === PIRATES)) {
+      const bounty = KILL_BOUNTY * kills;
+      p.credits += bounty;
+      adjustRep(p, p.commission, kills);
+      this.hud.toast(`${FACTIONS[fi(p.commission)].short} bounty: +${bounty.toLocaleString()} ¢`, 'good');
+    }
+    if (report.outcome === 'victory' && cb.enemy.missionId) this.reportMissions(missionVictory(p, cb.enemy.missionId));
+  }
+
+  /** The galaxy map's campaign layer. */
+  private galaxyOverlay(c: Campaign) {
+    const p = this.player;
+    const marks = new Map<number, string>();
+    for (const m of p.missions) marks.set(m.type === 'procure' ? m.origin : m.dest, m.type === 'procure' ? 'deliver goods' : m.type);
+    return {
+      ownerColor: (i: number) => FACTIONS[c.owner[i]].color,
+      fleets: c.fleets.filter((f) => f.kind !== 'patrol' || f.faction !== c.owner[f.route[f.leg]] || f.faction === PIRATES).map((f) => ({ star: f.route[f.leg], color: FACTIONS[f.faction].color, kind: f.kind })),
+      front: c.front,
+      marks,
+      info: (i: number) => {
+        const m = c.markets[i];
+        const fdef = FACTIONS[c.owner[i]];
+        const fl = c.fleetsAt(i);
+        const intel = p.intel[i];
+        return `<div class="ov"><div class="row"><span>Controlled by</span><span style="color:${fdef.color}">${fdef.short}</span></div>
+          <div class="row"><span>Market</span><span>${m.name} · size ${m.pop}</span></div>
+          <div class="row"><span>Your standing</span><span>${Math.round(repOf(p, fdef.id))}</span></div>
+          ${intel ? `<div class="row"><span>Prices seen</span><span>${c.day - intel.day} days ago</span></div>` : ''}
+          ${c.front.has(i) ? '<div class="alert">⚔ War front — military goods in demand</div>' : ''}
+          ${c.pirateActivity(i) >= 1 ? '<div class="alert">☠ Pirate activity</div>' : ''}
+          ${fl.length ? `<div class="row"><span>Fleets here</span><span>${fl.map((f) => `${FACTIONS[f.faction].short} ${f.kind}`).join(', ')}</span></div>` : ''}
+          ${c.states[i].conditions.map((x) => `<div class="alert" style="color:#ffd27a">${x.text}</div>`).join('')}</div>`;
+      },
+    };
+  }
+
+  toggleIntel(): void {
+    if (this.intel.open) {
+      this.intel.hide();
+      this.afterMapToggle(false);
+      return;
+    }
+    if (!this.campaign) return;
+    this.intel.show({
+      campaign: this.campaign,
+      player: this.player,
+      here: this.systemIndex,
+      plotRoute: (to) => {
+        this.toggleIntel();
+        void this.plotRoute(to);
+      },
+      close: () => this.toggleIntel(),
+      toast: (m, k) => this.hud.toast(m, k),
+    });
+    this.afterMapToggle(true);
+  }
+
+  private cargoEl: HTMLDivElement | null = null;
+  private cargoKey = '';
+
+  /** Hold, contraband and job count under the fuel gauges. */
+  private updateCargoHud(): void {
+    if (!this.cargoEl) {
+      this.cargoEl = document.createElement('div');
+      this.cargoEl.className = 'hud-cargo';
+      this.hud.root.appendChild(this.cargoEl);
+    }
+    const p = this.player;
+    const c = this.campaign;
+    const hot = c ? contraband(p, c.owner[this.systemIndex]).length > 0 : false;
+    const key = `${goodsAboard(p)}|${hot}|${p.missions.length}|${Math.round(p.credits)}`;
+    if (key === this.cargoKey) return;
+    this.cargoKey = key;
+    this.cargoEl.innerHTML = `HOLD <b>${goodsAboard(p) + Math.round(p.supplies)}/${p.suppliesCapacity}</b> · <b>${Math.round(p.credits).toLocaleString()} ¢</b>${p.missions.length ? ` · JOBS <b>${p.missions.length}</b> [I]` : ''}${hot ? ' · <span class="hot">CONTRABAND ABOARD</span>' : ''}`;
   }
 
   // ---------------------------------------------------------------- combat
@@ -1458,7 +1916,9 @@ export class Game {
     const world = this.shipWorld(new THREE.Vector3());
     // Station patrols keep the space near stations safe.
     if (this.universe.stations.some((st) => st.position.distanceTo(world) < 120_000)) return;
-    if (this.encounterRng.next() < EncounterDirector.rate(this.danger()) * dt) {
+    const heat = this.campaign ? 1 + this.campaign.pirateActivity(this.systemIndex) * 1.5 : 1;
+    const pirateHostile = !this.campaign || hostileTo(this.campaign, this.player, PIRATES);
+    if (pirateHostile && this.encounterRng.next() < EncounterDirector.rate(this.danger()) * heat * dt) {
       const enemy = pirateFleet(this.encounterRng.int(1, 1e9), fleetStrength(this.player.fleet), this.danger());
       d.warning = { t: EncounterDirector.WARNING, enemy };
       this.hud.toast(`Interdiction! ${enemy.name} have locked on`, 'warn');
@@ -1877,6 +2337,7 @@ export class Game {
       const res = applyReport(p.fleet, report, recover, cb.seed);
       p.fleet = res.fleet;
       p.credits -= res.spent;
+      this.combatPolitics(report);
       if (report.outcome === 'victory') {
         p.credits += report.salvage.credits;
         refreshLogistics(p);
@@ -2017,7 +2478,7 @@ export class Game {
       this.clearOfStation();
       const enemy: EnemyFleet = {
         name: "Kessa Thorn's Reavers",
-        faction: 'pirate',
+        faction: 'pirates',
         ships: ['corsair', 'bastion', 'jackal', 'jackal', 'harrier'].map((id, i) => ({
           id: `demo-${i}`,
           name: ['Widow\'s Grin', 'Iron Debt', 'Rusty Knife', 'Cutthroat', 'Last Laugh'][i],
@@ -2030,6 +2491,44 @@ export class Game {
       return 'Battle started';
     },
     combat: () => this.combat,
+    /** Campaign state: wars, your standing, where you are. */
+    campaign: () => {
+      const c = this.campaign;
+      if (!c) return null;
+      return {
+        day: c.day,
+        owner: FACTIONS[c.owner[this.systemIndex]].name,
+        wars: c.wars.map((w) => `${FACTIONS[w.a].short} vs ${FACTIONS[w.b].short}`),
+        reputation: this.player.reputation,
+        commission: this.player.commission,
+        cargo: this.player.cargo,
+        missions: this.player.missions.map((m) => m.title),
+        fleetsHere: c.fleetsAt(this.systemIndex).map((f) => `${FACTIONS[f.faction].short} ${f.kind}`),
+      };
+    },
+    /** Start a war between two factions (ids, e.g. 'hegemony', 'ascendant'). */
+    war: (a: string, b: string) => {
+      this.campaign?.declareWar(fi(a), fi(b));
+      return this.debug.campaign();
+    },
+    /** Let n days pass (the galaxy simulates them). */
+    days: (n: number) => {
+      this.time += n * SECONDS_PER_DAY;
+      this.syncCampaign();
+      return this.debug.campaign();
+    },
+    rep: (faction: string, value: number) => {
+      this.player.reputation[faction] = value;
+      return this.player.reputation;
+    },
+    cargo: (id: string, qty: number) => {
+      this.player.cargo[id] = qty;
+      return this.player.cargo;
+    },
+    /** Trigger a customs patrol hail from the local navy. */
+    hail: () => {
+      if (this.campaign) this.patrolHail(this.campaign.owner[this.systemIndex] === PIRATES ? fi('hegemony') : this.campaign.owner[this.systemIndex]);
+    },
     /** Watch a combat ship from an offset (metres, arena axes); call with no name to return to the chase camera. */
     spectate: (name?: string, offset: [number, number, number] = [300, 150, 300]) => {
       const ship = name ? this.combat?.sim.ships.find((x) => x.name.toLowerCase() === name.toLowerCase()) : null;

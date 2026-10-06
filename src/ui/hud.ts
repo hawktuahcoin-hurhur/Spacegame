@@ -191,7 +191,7 @@ export class Hud {
       <div><kbd>T</kbd>Target ahead · <kbd>[</kbd><kbd>]</kbd>Cycle targets</div>
       <div><kbd>G</kbd>Auto-align to target</div>
       <div><kbd>M</kbd>System map · <kbd>N</kbd>Galaxy map</div>
-      <div><kbd>R</kbd>Dock at station · <kbd>F</kbd>Fleet & refit · <kbd>C</kbd>Camera</div>
+      <div><kbd>R</kbd>Dock: market, bar, refit · <kbd>F</kbd>Fleet · <kbd>I</kbd>Intel · <kbd>C</kbd>Camera</div>
       <div><kbd>F5</kbd>Quicksave · <kbd>F9</kbd>Quickload · <kbd>Esc</kbd>Menu</div>
       <div><kbd>F3</kbd>Stats · <kbd>F4</kbd>Quality · <kbd>F6</kbd>Mute · <kbd>H</kbd>Help</div>
       <h4>COMBAT</h4>

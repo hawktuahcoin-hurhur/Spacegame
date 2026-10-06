@@ -18,6 +18,19 @@ export interface GalaxyMapState {
   jumpRange: number;
   visited: Set<number>;
   systemTarget: number | null;
+  /** Campaign layer: territory, fleets, war fronts and job destinations. */
+  overlay?: GalaxyOverlay;
+}
+
+export interface GalaxyOverlay {
+  /** Faction colour per star. */
+  ownerColor: (index: number) => string;
+  fleets: { star: number; color: string; kind: 'convoy' | 'patrol' | 'raid' | 'invasion' }[];
+  front: Set<number>;
+  /** Job destinations: star → short label. */
+  marks: Map<number, string>;
+  /** Extra HTML for the info panel. */
+  info: (index: number) => string;
 }
 
 const LOGDEPTH_VS_HEAD = /* glsl */ `
@@ -248,6 +261,10 @@ export class GalaxyMap {
   private down = { x: 0, y: 0 };
   private state: GalaxyMapState | null = null;
   private routeKey = '';
+  private territory: THREE.Points | null = null;
+  private fleetPts: THREE.Points | null = null;
+  private frontPts: THREE.Points | null = null;
+  private overlayKey = '';
   open = false;
   onPlotRoute: (to: number) => void = () => {};
   onClearRoute: () => void = () => {};
@@ -524,8 +541,85 @@ export class GalaxyMap {
     this.renderInfo();
   }
 
+  /** Soft round sprite for overlay points. */
+  private static disc: THREE.Texture | null = null;
+  private discTexture(): THREE.Texture {
+    if (GalaxyMap.disc) return GalaxyMap.disc;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    GalaxyMap.disc = new THREE.CanvasTexture(c);
+    return GalaxyMap.disc;
+  }
+
+  private points(positions: number[], colors: number[], size: number, opacity: number, attenuate = true): THREE.Points {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const mat = new THREE.PointsMaterial({ size, map: this.discTexture(), vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: attenuate });
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    this.scene.add(pts);
+    return pts;
+  }
+
+  private clearPoints(p: THREE.Points | null): null {
+    if (p) {
+      this.scene.remove(p);
+      p.geometry.dispose();
+      (p.material as THREE.Material).dispose();
+    }
+    return null;
+  }
+
+  /** Territory glow, war fronts and NPC fleets. */
+  private buildOverlay(): void {
+    const o = this.state?.overlay;
+    const key = o ? `${this.galaxy.stars.map((s) => o.ownerColor(s.index)).join('')}|${[...o.front].join(',')}|${o.fleets.map((f) => f.star + f.kind).join(',')}` : '';
+    if (key === this.overlayKey) return;
+    this.overlayKey = key;
+    this.territory = this.clearPoints(this.territory);
+    this.fleetPts = this.clearPoints(this.fleetPts);
+    this.frontPts = this.clearPoints(this.frontPts);
+    if (!o) return;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const c = new THREE.Color();
+    for (const s of this.galaxy.stars) {
+      c.set(o.ownerColor(s.index));
+      pos.push(s.x, s.y, s.z);
+      col.push(c.r * 0.5, c.g * 0.5, c.b * 0.5);
+    }
+    this.territory = this.points(pos, col, 11, 0.32);
+    const fp: number[] = [];
+    const fc: number[] = [];
+    o.fleets.forEach((f, i) => {
+      const s = this.galaxy.stars[f.star];
+      const a = i * 2.399;
+      fp.push(s.x + Math.cos(a) * 1.4, s.y + 0.6, s.z + Math.sin(a) * 1.4);
+      c.set(f.kind === 'raid' || f.kind === 'invasion' ? '#ff4030' : f.color);
+      fc.push(c.r * 1.6, c.g * 1.6, c.b * 1.6);
+    });
+    if (fp.length) this.fleetPts = this.points(fp, fc, 7, 1, false);
+    const wp: number[] = [];
+    const wc: number[] = [];
+    for (const i of o.front) {
+      const s = this.galaxy.stars[i];
+      wp.push(s.x, s.y, s.z);
+      wc.push(1.2, 0.15, 0.1);
+    }
+    if (wp.length) this.frontPts = this.points(wp, wc, 5, 0.9);
+  }
+
   private refreshRanges(): void {
     const st = this.state!;
+    this.buildOverlay();
     const cur = this.galaxy.stars[st.current];
     this.here.position.set(cur.x, cur.y, cur.z);
     this.rangeRing.position.copy(this.here.position);
@@ -640,7 +734,7 @@ export class GalaxyMap {
     this.info.classList.remove('hidden');
     this.info.innerHTML = `<h2>${s.name}</h2><div class="type">${visited ? 'Explored system' : 'Unexplored system'}</div><p>${desc}</p>${rows
       .map(([k, v]) => `<div class="row"><span>${k}</span><span>${v}</span></div>`)
-      .join('')}<div class="buttons">${
+      .join('')}${st.overlay ? st.overlay.info(s.index) : ''}<div class="buttons">${
       s.index === st.current ? '' : `<button data-act="plot">${onRoute ? 'Route plotted ✓' : 'Plot route'}</button>`
     }<button class="secondary" data-act="focus">Focus</button></div>`;
     this.info.querySelector<HTMLButtonElement>('[data-act=plot]')?.addEventListener('click', () => this.onPlotRoute(s.index));
@@ -700,6 +794,7 @@ export class GalaxyMap {
     const show = new Set<number>([st.current]);
     if (this.selected !== null) show.add(this.selected);
     st.route?.stars.forEach((i) => show.add(i));
+    st.overlay?.marks.forEach((_, i) => show.add(i));
     const radius = THREE.MathUtils.clamp(camDist * 0.35, 8, 60);
     const nearby = this.galaxy.stars
       .map((s) => ({ s, d: Math.hypot(s.x - target.x, s.y - target.y, s.z - target.z) }))
@@ -716,7 +811,7 @@ export class GalaxyMap {
     }
     // Place labels by priority, hiding any that would overlap one already placed.
     const priority = (idx: number) =>
-      idx === st.current || idx === this.selected ? 0 : st.route?.stars.includes(idx) ? 1 : st.visited.has(idx) ? 2 : 3;
+      idx === st.current || idx === this.selected ? 0 : st.route?.stars.includes(idx) || st.overlay?.marks.has(idx) ? 1 : st.visited.has(idx) ? 2 : 3;
     const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
     for (const idx of [...show].sort((a, b) => priority(a) - priority(b))) {
       const s = this.galaxy.stars[idx];
@@ -742,6 +837,10 @@ export class GalaxyMap {
       label.classList.toggle('selected', idx === this.selected);
       label.classList.toggle('visited', st.visited.has(idx));
       label.classList.toggle('route', !!st.route?.stars.includes(idx));
+      const mark = st.overlay?.marks.get(idx);
+      label.classList.toggle('mission', !!mark);
+      const text = mark ? `${s.name}  ◆ ${mark}` : s.name;
+      if (label.textContent !== text) label.textContent = text;
       label.style.transform = `translate(${sx + 9}px, ${sy - 7}px)`;
     }
   }
