@@ -495,12 +495,52 @@ Each phase ends with a **playable build** and a demo goal.
 - **Saves v3:** the campaign snapshot (owners, relations, wars, fleets, news, market stocks and conditions, RNG state) plus cargo, reputation, commission, jobs, contacts and price intel. v2 saves migrate to a fresh campaign advanced to the save's day.
 - **Demo, verified in tests:** declaring Hegemony–Ascendant war raises front-line military goods to more than 1.2× a peace control within 10 days. A new galaxy usually has a war already running or brewing between the Hegemony and the Ascendant Path; smuggle weapons to the front, or take a League commission.
 
-### Phase 7 — Planet Surfaces (Weeks 22–26)
+### Phase 7 — Planet Surfaces (Weeks 22–26)  ✅ *done*
 - Landing transition (orbit → atmospheric entry → surface scene)
 - Chunked heightfield terrain, biomes, instanced flora, simple fauna
 - On-foot controller + mining tool + scanner; POIs (ruins, crash sites)
 - Codex/discovery data economy
 - **Demo**: land, explore, mine, discover ruins, sell data.
+
+**As built** (`src/surface/`):
+- **Landing:**
+  - Below about 7 km over any rocky planet or moon (not gas giants), **L** starts atmospheric entry: the ship dives nose-down, with a plasma glow around the screen edges, camera shake, then a white-out.
+  - The surface scene then loads, and a cinematic shows the ship settling onto its landing struts.
+  - **E** at the ship takes off (cinematic climb, fade), returning you to orbit above the landing site with a little upward velocity.
+- **Surface profile** (`profile.ts`):
+  - Derived from the same `BodyDef` the orbital shader renders, so the biome ramp, sea kind (water, lava, ice, acid, glow), relief, craters, ice caps and cloud cover match what you saw from orbit.
+  - Sky colours come from the atmosphere's Rayleigh and Mie coefficients; airless worlds get a black, starry sky.
+  - Hazard by type and temperature: heat, cold, toxic, radiation or vacuum, each with a drain rate.
+- **Terrain** (`terrain.ts`, `noise.ts`):
+  - Seeded CPU simplex noise: continents, warped fBm hills, ridged mountains masked to highlands, metre-scale detail, and crater fields on airless worlds.
+  - The landing site's longitude and latitude offset the noise, so every spot on a planet is unique and revisiting gives the same ground. You always land on dry ground.
+  - Flat-shaded low-poly chunks of 64 m: 16² quads near the player, 8² further out, with skirts hiding LOD cracks.
+  - Per-face biome colour from height, moisture, slope (rock on cliffs) and snow line, with facet jitter.
+  - Streamed nearest-first within a frame-time budget, to a radius of about 640 m with distance fog.
+- **Flora** (`props.ts`):
+  - 14 low-poly kinds: broadleaf, conifer, palm, bush, grass, cactus, shrub, glowing mushrooms and spore pods, crystal trees, ice spikes, obsidian with lava cracks, rocks and boulders.
+  - Instanced per chunk with glow parts drawn unlit, so they bloom.
+  - Placed deterministically with forest clumping, avoiding water, steep slopes and snow. Ground cover is drawn only near the player.
+- **Wildlife** (`fauna.ts`): 1–3 species per living world, as grazers, hoppers and flyers with animated gaits. Herds spawn in the distance, graze and wander; timid species bolt and curious ones come to look.
+- **Points of interest** (`pois.ts`), one guaranteed near the landing site:
+  - Precursor ruins: a pillar ring with glowing runes and a glyph altar.
+  - Crashed ships: a real hull model darkened and half-buried, with debris, a scorch mark and cargo crates.
+  - Monoliths.
+- **On foot** (`session.ts`):
+  - First-person walking and sprinting (stamina), jumping, and a jetpack scaled to planet gravity; swimming slows you.
+  - Collisions with trees, rocks, deposits, ruins and the ship.
+  - Exosuit hazard protection drains away from the ship; when it runs out, health drains. Blacking out recalls you to the ship for a medical fee.
+  - Tools: **1** mining beam (hold LMB: glowing deposits of ore, rare ore, volatiles, water, organics, rare metals or metals feed your hold; beam heat and overheat), **2** analysis scanner (hold on plants and animals to catalogue them), **F** pulse scan (reveals nearby points of interest on the compass), **E** interact.
+  - Sun shadows from a directional light, with the shadow box following you.
+  - Day or night from the real star direction at the landing site; night is dark, with stars.
+- **Codex and the data economy** (`codex.ts`):
+  - Discoveries are recorded with procedural binomial species names: flora, fauna, ruins, wrecks, and first landfall on each world.
+  - Values scale with kind and rarity. Sell them at any station's Services; Tri-Corp pays +30% and the League +10%, and selling earns a little reputation.
+  - **Intel → Codex** lists everything.
+  - Ruins can hide an AI core; wreck crates give supplies, metals, machinery or weapons, plus credits.
+- **HUD:** compass strip with the ship, known points of interest and deposits (after a pulse); target readout with a scan-progress ring; suit gauges; tool panel; interaction prompts.
+- **Saves v4:** codex, mined-out deposits and looted crates and glyphs. Saving on the surface puts you back in orbit above the site on load.
+- **Debug:** `game.debug.land('Planet name')` lands immediately; `game.debug.surface()` returns the session.
 
 ### Phase 8 — Colonies & Endgame (Weeks 27–31)
 - Survey → outpost → colony; industries; growth; defenses

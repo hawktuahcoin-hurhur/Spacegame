@@ -4,7 +4,7 @@ import { abandonMission, rep } from '../campaign/trade';
 import type { PlayerState } from '../player';
 import { factionBadge, missionCard, standingBadge } from './stationTabs';
 
-export type IntelTab = 'news' | 'jobs' | 'factions' | 'trade';
+export type IntelTab = 'news' | 'jobs' | 'factions' | 'trade' | 'codex';
 
 export interface IntelHost {
   campaign: Campaign;
@@ -67,6 +67,7 @@ export class IntelScreen {
       ['jobs', `Jobs (${h.player.missions.length})`],
       ['factions', 'Factions'],
       ['trade', 'Trade intel'],
+      ['codex', `Codex (${Object.keys(h.player.codex).length})`],
     ];
     this.root.innerHTML = `
       <div class="in-head"><div class="in-title">Intel<small>Day ${h.campaign.day + 1}</small></div>
@@ -135,6 +136,18 @@ export class IntelScreen {
       return `<table class="in-fac"><thead><tr><th>Faction</th><th>Your standing</th><th class="n">Systems</th><th>At war with</th>${FACTIONS.map((f) => `<th class="rel" title="${f.name}">${f.short.slice(0, 4)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
         <div class="in-facdesc">${FACTIONS.map((f) => `<div><b style="color:${f.color}">${f.name}</b><p>${esc(f.description)}</p><small>Illegal: ${f.illegal.map((x) => COMMODITIES.find((k) => k.id === x)!.name).join(', ') || 'nothing'}${f.restricted.length ? ` · Restricted: ${f.restricted.map((x) => COMMODITIES.find((k) => k.id === x)!.name).join(', ')}` : ''} · Tariff ${Math.round(f.tariff * 100)}%</small></div>`).join('')}</div>
         <p class="fs-note">Standing: ${['Vengeful ≤ −75', 'Hostile ≤ −50 (attacked on sight, no docking)', 'Inhospitable ≤ −20 (higher tariffs, no jobs)', 'Favorable 10+ (commissions from 15)', 'Friendly 25+ (warships for sale, lower tariffs)'].join(' · ')}. ${standing(0).label} is the default.</p>`;
+    }
+    if (this.tab === 'codex') {
+      const all = Object.values(p.codex).sort((a, b) => b.day - a.day);
+      if (!all.length) return '<p class="fs-note">Land on planets (L when close) and scan plants and animals, translate ruins and salvage wrecks. Discoveries are logged here and sell as data at any station.</p>';
+      const unsold = all.filter((e) => !e.sold).reduce((a, e) => a + e.value, 0);
+      const icon: Record<string, string> = { flora: '❦', fauna: '🐾', mineral: '◆', ruins: '◈', wreck: '✦', planet: '◯' };
+      return `<p class="fs-note">${all.length} discoveries · unsold data worth about <b>${unsold.toLocaleString()} ¢</b> — sell it at any station's Services (Tri-Corp pays best).</p>
+        <div class="in-codex">${all
+          .map(
+            (e) => `<div class="cx ${e.kind}${e.sold ? ' sold' : ''}"><span class="ic">${icon[e.kind] ?? '•'}</span><div><b>${esc(e.name)}</b><small>${e.kind} · ${esc(e.planet)}, ${esc(e.system)} · day ${e.day}</small><p>${esc(e.note)}</p></div><em>${e.sold ? 'sold' : `${e.value.toLocaleString()} ¢`}</em></div>`,
+          )
+          .join('')}</div>`;
     }
     // Trade intel: best prices seen per commodity.
     const seen = Object.entries(p.intel).map(([k, v]) => ({ star: Number(k), ...v }));

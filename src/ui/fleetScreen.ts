@@ -44,6 +44,9 @@ export interface FleetScreenHost {
   station: StationContext | null;
   /** Cost to top up fuel and supplies here. */
   refuelCost(): number;
+  /** Unsold exploration data and its value here. */
+  dataValue(): { count: number; value: number };
+  sellData(): void;
   toast(msg: string, kind?: '' | 'warn' | 'good'): void;
   close(): void;
 }
@@ -720,6 +723,10 @@ export class FleetScreen {
         <button class="primary" data-act="refuel" ${needFuel < 0.05 && needSup < 0.05 ? 'disabled' : ''}>${needFuel < 0.05 && needSup < 0.05 ? 'Tanks and holds full' : `Refuel & resupply ${credits(this.host.refuelCost())}`}</button>
         <button class="primary" data-act="repair" ${repair <= 0 || p.credits < repair ? 'disabled' : ''} title="Restore hull integrity and combat readiness">${repair <= 0 ? 'Fleet fully repaired' : `Repair & recommission ${credits(repair)}`}</button>
         <button data-act="sim" title="Fight a simulated pirate fleet: no losses, no rewards">Combat simulator</button>
+        ${(() => {
+          const d = this.host.dataValue();
+          return `<button class="primary" data-act="data" ${d.count ? '' : 'disabled'} title="Scans, ruins and surveys from planet surfaces">${d.count ? `Sell exploration data (${d.count}) ${credits(d.value)}` : 'No exploration data to sell'}</button>`;
+        })()}
       </div>
       ${damaged.length ? `<div class="svc-dmods">${damaged
         .map((x) => {
@@ -743,6 +750,10 @@ export class FleetScreen {
       this.commit();
     });
     this.bottom.querySelector('[data-act=sim]')?.addEventListener('click', () => this.host.simulate());
+    this.bottom.querySelector('[data-act=data]')?.addEventListener('click', () => {
+      this.host.sellData();
+      this.refresh();
+    });
     this.bottom.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach((b) =>
       b.addEventListener('click', () => {
         const x = p.fleet.ships.find((y) => y.id === b.dataset.restore);

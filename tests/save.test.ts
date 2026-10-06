@@ -29,6 +29,9 @@ const sample: SaveData = {
     takenMissions: ['m1-0-0'],
     contacts: {},
     intel: { 42: { day: 3, buy: [1, 2], sell: [3, 4] } },
+    codex: { 'x:flora:1': { id: 'x:flora:1', kind: 'flora', name: 'Velaris arbor', planet: 'P', system: 'S', value: 500, day: 2, sold: false, note: 'n' } },
+    harvested: ['1:2:3'],
+    looted: ['4:5:crate0'],
   },
   fleet: { flagshipId: 'ship-a', ships: [flag, escort] },
   campaign: null,
@@ -82,6 +85,12 @@ describe('parseSave', () => {
     expect(s.player.cargo).toEqual({});
     expect(s.player.reputation.pirates).toBeLessThan(0);
     expect(s.player.commission).toBeNull();
+  });
+
+  it('migrates v3 saves with an empty codex', () => {
+    const s = parseSave({ ...sample, version: 3, player: { ...sample.player, codex: undefined, harvested: undefined, looted: undefined } });
+    expect(s.player.codex).toEqual({});
+    expect(s.player.harvested).toEqual([]);
   });
 
   it('drops unknown commodities and factions', () => {

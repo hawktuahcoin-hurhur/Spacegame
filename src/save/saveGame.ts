@@ -1,11 +1,12 @@
 import type { CampaignSnapshot } from '../campaign/campaign';
 import { hasCommodity, hasFaction } from '../campaign/defs';
 import type { Mission } from '../campaign/missions';
+import type { CodexEntry } from '../surface/codex';
 import { type PlayerState, type PriceIntel, START_REPUTATION, refreshLogistics } from '../player';
 import { type Loadout, hasHull, hasHullmod, hasWeapon, hull } from '../ships/defs';
 import { type Fleet, MAX_CR, STARTING_CREDITS, starterFleet } from '../ships/fleet';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export type SavedTarget = { kind: 'local'; id: string } | { kind: 'system'; index: number } | null;
 
@@ -44,6 +45,9 @@ export interface SaveData {
     takenMissions: string[];
     contacts: PlayerState['contacts'];
     intel: Record<number, PriceIntel>;
+    codex: Record<string, CodexEntry>;
+    harvested: string[];
+    looted: string[];
   };
   fleet: Fleet;
   /** The galaxy's economy, factions, fleets and news (null: start fresh from the seed). */
@@ -69,6 +73,10 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
   if ((out.version as number) === 2) {
     // v2 → v3: the economy and factions (Phases 5–6) start fresh from the galaxy seed.
     out = { ...out, version: 3, campaign: null };
+  }
+  if ((out.version as number) === 3) {
+    // v3 → v4: planet surfaces (Phase 7) add the codex and harvested/looted sites.
+    out = { ...out, version: 4, player: { ...(out.player as object), codex: {}, harvested: [], looted: [] } };
   }
   return out;
 }
@@ -130,6 +138,21 @@ function parseMissions(raw: unknown): Mission[] {
     );
   });
 }
+
+const CODEX_KINDS = new Set(['flora', 'fauna', 'mineral', 'ruins', 'wreck', 'planet']);
+
+function parseCodex(raw: unknown): Record<string, CodexEntry> {
+  const out: Record<string, CodexEntry> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const e = v as Partial<CodexEntry> | null;
+    if (e && typeof e.name === 'string' && CODEX_KINDS.has(e.kind as string) && isNum(e.value))
+      out[k] = { id: k, kind: e.kind!, name: e.name, planet: String(e.planet ?? ''), system: String(e.system ?? ''), value: e.value, day: isNum(e.day) ? e.day : 0, sold: !!e.sold, note: String(e.note ?? '') };
+  }
+  return out;
+}
+
+const strings = (raw: unknown): string[] => (Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string').slice(-5000) : []);
 
 function numberRecord(raw: unknown, keyOk: (k: string) => boolean): Record<string, number> {
   const out: Record<string, number> = {};
@@ -200,6 +223,9 @@ export function parseSave(input: unknown): SaveData {
       takenMissions: Array.isArray(player.takenMissions) ? player.takenMissions.filter((x): x is string => typeof x === 'string') : [],
       contacts: player.contacts && typeof player.contacts === 'object' ? player.contacts : {},
       intel: player.intel && typeof player.intel === 'object' ? player.intel : {},
+      codex: parseCodex(player.codex),
+      harvested: strings(player.harvested),
+      looted: strings(player.looted),
     },
     fleet: parseFleet(raw.fleet),
     campaign: parseCampaign(raw.campaign),
@@ -226,5 +252,8 @@ export function playerFromSave(base: PlayerState, s: SaveData): PlayerState {
     takenMissions: [...s.player.takenMissions],
     contacts: { ...s.player.contacts },
     intel: { ...s.player.intel },
+    codex: { ...s.player.codex },
+    harvested: new Set(s.player.harvested),
+    looted: new Set(s.player.looted),
   });
 }

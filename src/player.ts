@@ -1,4 +1,5 @@
 import type { Mission } from './campaign/missions';
+import type { CodexEntry } from './surface/codex';
 import { type Fleet, STARTING_CREDITS, fleetLogistics, starterFleet } from './ships/fleet';
 
 /** Prices you saw at a market, for planning trade runs. */
@@ -40,6 +41,11 @@ export interface PlayerState {
   contacts: Record<string, { name: string; title: string; faction: string; jobs: number }>;
   /** Last seen prices per market (star index). */
   intel: Record<number, PriceIntel>;
+  /** Discoveries: scanned species, ruins, worlds (Phase 7). */
+  codex: Record<string, CodexEntry>;
+  /** Mined-out deposits and looted crates/glyphs (planet-seeded ids). */
+  harvested: Set<string>;
+  looted: Set<string>;
 }
 
 /** Starting reputation: friendly with the frontier, wary of the core, hated by pirates. */
@@ -93,6 +99,9 @@ export function newPlayer(): PlayerState {
     takenMissions: [],
     contacts: {},
     intel: {},
+    codex: {},
+    harvested: new Set(),
+    looted: new Set(),
   });
 }
 

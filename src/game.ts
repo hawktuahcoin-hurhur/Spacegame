@@ -24,6 +24,10 @@ import {
 } from './campaign/trade';
 import { factionFleet } from './combat/encounters';
 import { CommDialog } from './ui/comm';
+import { DATA_PREMIUM } from './surface/codex';
+import { SurfaceSession } from './surface/session';
+import { isLandable } from './surface/profile';
+import { SurfaceHud } from './ui/surfaceHud';
 import { IntelScreen } from './ui/intel';
 import type { StationContext } from './ui/stationTabs';
 import { CombatSession, EncounterDirector } from './combat/session';
@@ -151,6 +155,7 @@ export class Game {
   /** The combat ship the flight model is attached to (follows its wreck if it dies). */
   private combatAvatar: CombatShip | null = null;
   private readonly listener = { pos: new THREE.Vector3(), right: new THREE.Vector3(1, 0, 0) };
+  private surfaceMouse = { dx: 0, dy: 0 };
   private readonly encounterRng = new Rng(4242);
   /** The living galaxy: markets, factions, fleets, news (Phases 5–6). */
   campaign: Campaign | null = null;
@@ -163,6 +168,11 @@ export class Game {
   private dockedAt = -1;
   /** Cooldown before the next patrol hail (s of game time). */
   private patrolCooldown = 60;
+  /** On a planet's surface (Phase 7). */
+  surface: SurfaceSession | null = null;
+  readonly surfaceHud = new SurfaceHud(document.body);
+  /** Atmospheric entry in progress: plunging toward the landing site. */
+  private landing: { t: number; body: BodyState; dir: THREE.Vector3 } | null = null;
   /** Debug/QA: watch a combat ship from a fixed offset instead of the chase camera. */
   private spectate: { ship: CombatShip; offset: THREE.Vector3 } | null = null;
 
@@ -237,6 +247,8 @@ export class Game {
         return game.stationContext();
       },
       refuelCost: () => this.refuelCost(),
+      dataValue: () => this.dataValue(this.systemIndex),
+      sellData: () => this.sellData(),
       toast: (m, k) => this.hud.toast(m, k),
       close: () => this.toggleFleetScreen(),
     });
@@ -346,6 +358,7 @@ export class Game {
   }
 
   async newGame(seed: number, onProgress: (f: number, label: string) => void): Promise<void> {
+    this.abortSurface();
     this.abortCombat();
     this.encounters.reset(240);
     onProgress(0, 'Mapping the galaxy');
@@ -364,6 +377,7 @@ export class Game {
   }
 
   async loadSave(save: SaveData, onProgress: (f: number, label: string) => void): Promise<void> {
+    this.abortSurface();
     this.abortCombat();
     this.encounters.reset(180);
     this.jump = null;
@@ -664,6 +678,9 @@ export class Game {
         takenMissions: [...this.player.takenMissions],
         contacts: { ...this.player.contacts },
         intel: { ...this.player.intel },
+        codex: Object.fromEntries(Object.entries(this.player.codex).map(([k, v]) => [k, { ...v }])),
+        harvested: [...this.player.harvested].slice(-3000),
+        looted: [...this.player.looted].slice(-3000),
       },
       campaign: this.campaign?.snapshot() ?? null,
       fleet: { flagshipId: this.player.fleet.flagshipId, ships: this.player.fleet.ships.map((x) => ({ ...x, loadout: { ...x.loadout, weapons: { ...x.loadout.weapons }, hullmods: [...x.loadout.hullmods] } })) },
@@ -930,6 +947,14 @@ export class Game {
     if (this.paused || !this.universe) return;
     const cb = this.combat;
     if (this.comm.open) return;
+    if (this.surface || this.landing) {
+      // Down on (or plunging toward) the surface: the system keeps turning, the orbital ship waits.
+      this.time += dt;
+      this.universe.update(this.time);
+      this.syncCampaign();
+      if (this.landing) this.updateLanding(dt);
+      return;
+    }
     if (cb) {
       if (cb.state === 'report' || (this.tactical.open && this.tactical.paused)) return;
       dt *= cb.timeScale;
@@ -1069,6 +1094,15 @@ export class Game {
   private handleActions(): void {
     const i = this.input;
     if (this.aftermath.open) return;
+    if (this.surface) {
+      if (this.intel.open && (i.pressed('Escape') || i.pressed('KeyI'))) this.toggleIntel();
+      else if (i.pressed('KeyI') && !this.intel.open) this.toggleIntel('codex');
+      else if (i.pressed('Escape') && !this.input.locked && !this.intel.open) this.onPauseRequest();
+      if (i.pressed('F5')) void this.saveTo('quick');
+      if (i.pressed('F6')) this.audio.setMuted(!this.audio.muted);
+      return;
+    }
+    if (this.landing) return;
     if (this.combat && this.handleCombatActions()) return;
     const cb = this.combat;
     if (cb && (i.pressed('KeyM') || i.pressed('KeyN'))) this.hud.toast('Maps are unavailable in combat — Tab for the tactical view', 'warn');
@@ -1115,6 +1149,11 @@ export class Game {
       }
     }
     if (i.pressed('KeyX')) this.pendingZero = true;
+    if (i.pressed('KeyL') && !cb) {
+      const why = this.landingBlocker();
+      if (why) this.hud.toast(why, 'warn');
+      else this.beginLanding();
+    }
     if (i.pressed('KeyR') && !cb) {
       const why = this.campaign && this.resupplyStation() ? dockingAllowed(this.campaign, this.player, this.systemIndex) : null;
       if (why && !why.ok) {
@@ -1215,7 +1254,8 @@ export class Game {
     else if (this.input.pressed('Escape')) this.onPauseRequest();
     const m = this.input.consumeMouse();
     const free = this.input.isMouseDown(2) && !this.combat;
-    if (!this.paused && !this.anyMapOpen && !this.inTunnel) this.steerAim(frameDt, m.dx, m.dy);
+    if (this.surface) this.surfaceMouse = this.paused || this.anyMapOpen ? { dx: 0, dy: 0 } : m;
+    else if (!this.paused && !this.anyMapOpen && !this.inTunnel && !this.landing) this.steerAim(frameDt, m.dx, m.dy);
     if (!this.mouseAim && !free) {
       this.pendingMouse.dx += m.dx * this.settings.sensitivity;
       this.pendingMouse.dy += m.dy * (this.settings.invertY ? -1 : 1) * this.settings.sensitivity;
@@ -1271,11 +1311,21 @@ export class Game {
       this.fleetScreen.render(frameDt, performance.now() / 1000);
       return;
     }
+    if (this.surface) {
+      const dt = this.paused || this.intel.open ? 0 : Math.min(frameDt, 0.05);
+      this.surface.update(dt, this.surfaceMouse);
+      this.surfaceMouse = { dx: 0, dy: 0 };
+      if (!this.surface) return;
+      this.surface.render();
+      if (!this.paused) this.surfaceHud.update(this.surface.hud());
+      return;
+    }
+    this.surfaceHud.setEntry(this.landing ? Math.min(1, this.landing.t / 0.8) * (this.landing.t > 2.6 ? Math.max(0, 1 - (this.landing.t - 2.6) / 0.4) : 1) : 0, performance.now() / 1000);
 
     // Camera.
     const speedFactor = THREE.MathUtils.clamp(ship.speed / (ship.stats.maxSpeed * ship.stats.boostMultiplier), 0, 1);
     const flash = ship.transitionAge < 0.6 ? 1 - ship.transitionAge / 0.6 : 0;
-    const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3 + (this.combat?.renderer.shake ?? 0) * 3;
+    const shake = charging * 1.5 + flash * 3 + (ship.boosting ? 0.6 : 0) + jumpCharge * jumpCharge * 3 + (this.combat?.renderer.shake ?? 0) * 3 + (this.landing ? 4 : 0);
     this.lastShake += (shake - this.lastShake) * 0.2;
     this.chase.update(frameDt, this.viewQuaternion(new THREE.Quaternion()), speedFactor + scBlend, this.lastShake, this.time);
     this.camWorld.copy(world).add(this.chase.offset);
@@ -1502,7 +1552,8 @@ export class Game {
       banner = { title: `Interdiction ${Math.max(1, Math.ceil(warning.t))}`, sub: `${warning.enemy.name} are pulling you out of supercruise` };
     const station = this.combat ? null : this.resupplyStation();
     const denied = station && this.campaign ? dockingAllowed(this.campaign, this.player, this.systemIndex) : null;
-    const prompt = station ? (denied && !denied.ok ? `Docking denied — ${denied.why}` : `[R] Dock at ${station.name}`) : null;
+    const landable = !station && !this.combat && !this.landingBlocker() ? (this.frame as BodyState) : null;
+    const prompt = station ? (denied && !denied.ok ? `Docking denied — ${denied.why}` : `[R] Dock at ${station.name}`) : landable ? `[L] Land on ${landable.name}` : null;
     this.updateCargoHud();
 
     this.hud.update(
@@ -1532,6 +1583,141 @@ export class Game {
       w,
       h,
     );
+  }
+
+  // ---------------------------------------------------------------- surfaces
+
+  /** Why we can't land right now (null = we can). */
+  private landingBlocker(): string | null {
+    const f = this.frame;
+    if (!f || f.kind !== 'body') return 'Nothing to land on — fly close to a planet or moon';
+    const b = f as BodyState;
+    if (!isLandable(b.def)) return `${b.name} is a gas giant — there is no surface to land on`;
+    if (this.combat || this.jump) return 'Cannot land now';
+    if (this.ship.mode !== 'normal') return 'Drop out of supercruise to land';
+    const alt = this.shipWorld(new THREE.Vector3()).distanceTo(b.position) - b.radius;
+    const ceiling = Math.max(7000, b.radius * 0.4);
+    if (alt > ceiling) return `Descend below ${(ceiling / 1000).toFixed(0)} km to land (now ${(alt / 1000).toFixed(1)} km)`;
+    return null;
+  }
+
+  /** Start the plunge through the atmosphere. */
+  private beginLanding(): void {
+    const b = this.frame as BodyState;
+    const dir = this.shipWorld(new THREE.Vector3()).sub(b.position).normalize();
+    this.landing = { t: 0, body: b, dir };
+    this.ship.velocity.set(0, 0, 0);
+    this.ship.throttle = 0;
+    if (this.map.open) this.toggleMap();
+    this.audio.boom(0.8);
+    this.hud.toast(b.def.atmosphere ? `Atmospheric entry — ${b.name}` : `Descending to ${b.name}`, 'good');
+  }
+
+  private updateLanding(dt: number): void {
+    const l = this.landing!;
+    l.t += dt;
+    // Dive toward the surface, nose down.
+    const b = l.body;
+    const alt = this.local.length() - b.radius;
+    this.local.addScaledVector(l.dir, -Math.min(alt * 0.6, 2500) * dt);
+    const want = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), l.dir.clone().negate().lerp(new THREE.Vector3(0, 1, 0).cross(l.dir).normalize(), 0.5).normalize(), l.dir));
+    this.ship.quaternion.slerp(want, 1 - Math.exp(-dt * 2));
+    this.aim.copy(this.ship.quaternion);
+    this.ship.velocity.copy(l.dir).multiplyScalar(-800);
+    if (l.t > 2.2) this.surfaceHud.setFade((l.t - 2.2) / 0.8);
+    if (l.t >= 3) this.enterSurface();
+  }
+
+  private enterSurface(): void {
+    const l = this.landing!;
+    this.landing = null;
+    this.surfaceHud.setEntry(0, 0);
+    const b = l.body;
+    const toStar = this.universe.star.position.clone().sub(b.position).normalize();
+    const star = this.universe.system.star;
+    const p = this.player;
+    const game = this;
+    this.surface = new SurfaceSession(
+      { body: b.def, dir: l.dir, toStar, starColor: new THREE.Color(star.color[0], star.color[1], star.color[2]), flagship: flagship(p.fleet).loadout },
+      {
+        get player() {
+          return game.player;
+        },
+        get day() {
+          return game.day;
+        },
+        systemName: this.universe.system.name,
+        input: this.input,
+        audio: this.audio,
+        pipeline: this.pipeline,
+        sensitivity: this.settings.sensitivity,
+        invertY: this.settings.invertY,
+        toast: (m, k) => this.hud.toast(m, k),
+        onTakeoff: () => this.leaveSurface(),
+        harvested: p.harvested,
+        looted: p.looted,
+      },
+    );
+    this.surfaceLanding = l;
+    this.hud.root.classList.add('on-surface');
+    this.surfaceHud.setVisible(true);
+    this.audio.update({ throttle: 0, boost: false, supercruise: 0, scoop: 0, tunnel: 0 });
+  }
+
+  private surfaceLanding: { body: BodyState; dir: THREE.Vector3 } | null = null;
+
+  /** Back to orbit above the landing site. */
+  private leaveSurface(): void {
+    const s = this.surface;
+    const l = this.surfaceLanding;
+    if (!s || !l) return;
+    s.dispose();
+    this.surface = null;
+    this.surfaceLanding = null;
+    this.hud.root.classList.remove('on-surface');
+    this.surfaceHud.setVisible(false);
+    this.surfaceHud.setFade(0);
+    const b = l.body;
+    this.frame = b;
+    const clearance = Math.max(b.def.atmosphere ? b.def.atmosphere.height * 1.1 : 0, 9000);
+    this.local.copy(l.dir).multiplyScalar(b.radius + clearance);
+    this.ship.velocity.copy(l.dir).multiplyScalar(220);
+    const tangent = new THREE.Vector3(0, 1, 0).cross(l.dir).normalize();
+    const look = tangent.clone().lerp(l.dir, 0.45).normalize();
+    this.ship.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(new THREE.Vector3(), look, l.dir));
+    this.ship.throttle = 0.5;
+    this.ship.mode = 'normal';
+    this.snapView();
+    this.updateFrame(false);
+    this.hud.flashScreen(900);
+    this.audio.boom(0.6);
+    this.hud.toast(`Back in orbit over ${b.name}`, 'good');
+    refreshLogistics(this.player);
+    void this.saveTo('auto');
+  }
+
+  /** Data value of unsold discoveries at a station (Tri-Corp pays best). */
+  dataValue(star: number): { count: number; value: number } {
+    const c = this.campaign;
+    const premium = c ? (DATA_PREMIUM[FACTIONS[c.owner[star]].id] ?? 1) : 1;
+    let count = 0;
+    let value = 0;
+    for (const e of Object.values(this.player.codex))
+      if (!e.sold) {
+        count++;
+        value += e.value;
+      }
+    return { count, value: Math.round(value * premium) };
+  }
+
+  sellData(): void {
+    const { count, value } = this.dataValue(this.systemIndex);
+    if (!count) return;
+    for (const e of Object.values(this.player.codex)) e.sold = true;
+    this.player.credits += value;
+    if (this.campaign) adjustRep(this.player, FACTIONS[this.campaign.owner[this.systemIndex]].id, Math.min(5, value / 10000));
+    this.hud.toast(`Sold ${count} discoveries for ${value.toLocaleString()} ¢`, 'good');
+    this.audio.blip(880, 0.12);
   }
 
   // ---------------------------------------------------------------- campaign
@@ -1845,7 +2031,7 @@ export class Game {
     };
   }
 
-  toggleIntel(): void {
+  toggleIntel(tab?: 'news' | 'jobs' | 'factions' | 'trade' | 'codex'): void {
     if (this.intel.open) {
       this.intel.hide();
       this.afterMapToggle(false);
@@ -1862,7 +2048,7 @@ export class Game {
       },
       close: () => this.toggleIntel(),
       toast: (m, k) => this.hud.toast(m, k),
-    });
+    }, tab);
     this.afterMapToggle(true);
   }
 
@@ -2374,6 +2560,19 @@ export class Game {
     this.escorts.snap(this.ship.quaternion);
   }
 
+  /** Leave the surface without the take-off sequence (loading a save). */
+  abortSurface(): void {
+    this.landing = null;
+    this.surfaceHud.setEntry(0, 0);
+    this.surfaceHud.setFade(0);
+    if (!this.surface) return;
+    this.surface.dispose();
+    this.surface = null;
+    this.surfaceLanding = null;
+    this.hud.root.classList.remove('on-surface');
+    this.surfaceHud.setVisible(false);
+  }
+
   /** Drop a battle immediately (loading a save, new game). */
   abortCombat(): void {
     if (!this.combat) return;
@@ -2491,6 +2690,15 @@ export class Game {
       return 'Battle started';
     },
     combat: () => this.combat,
+    /** Land immediately on a named body (skips the approach). */
+    land: (name?: string) => {
+      const b = (name ? this.universe.anchors.find((a) => a.name.toLowerCase() === name.toLowerCase()) : this.universe.bodies.find((x) => isLandable(x.def) && x.def.type !== 'barren')) as BodyState | undefined;
+      if (!b || b.kind !== 'body') return 'no such body';
+      this.debug.goto(b.name, 3000, { view: 0.9 });
+      this.beginLanding();
+      return `Landing on ${b.name} (${b.def.type})`;
+    },
+    surface: () => this.surface,
     /** Campaign state: wars, your standing, where you are. */
     campaign: () => {
       const c = this.campaign;

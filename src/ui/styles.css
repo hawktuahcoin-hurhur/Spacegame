@@ -3815,3 +3815,365 @@ table.in-trade .neg {
   font-size: 12px;
   margin-top: 4px;
 }
+
+/* ------------------------------------------------------------------ surface */
+
+.hud.on-surface > *:not(.toasts) {
+  display: none !important;
+}
+
+.sf-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font);
+  color: #e6f4ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.05em;
+}
+
+.sf-hud.cinematic > *:not(.sf-title) {
+  opacity: 0;
+}
+
+.sf-compass {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 600px;
+  height: 46px;
+  margin-left: -300px;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
+  border-bottom: 1px solid rgba(230, 244, 255, 0.25);
+}
+
+.sf-strip {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 100%;
+}
+
+.sf-needle {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  background: #fff;
+}
+
+.sf-strip span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.sf-strip .cardinal {
+  font-size: 18px;
+  font-weight: 700;
+  top: 14px;
+  color: #fff;
+}
+
+.sf-strip .mk i {
+  display: block;
+  font-style: normal;
+  font-size: 14px;
+  color: #ffd27a;
+}
+
+.sf-strip .mk.ship i {
+  color: var(--ok);
+}
+
+.sf-strip .mk.deposit i {
+  color: #5fd4ff;
+}
+
+.sf-strip .mk b,
+.sf-strip .mk em {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0.08em;
+}
+
+.sf-strip .mk em {
+  font-family: var(--mono);
+  color: rgba(230, 244, 255, 0.65);
+}
+
+.sf-title {
+  position: absolute;
+  left: 26px;
+  top: 20px;
+}
+
+.sf-title b {
+  display: block;
+  font-size: 24px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.sf-title small {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: rgba(230, 244, 255, 0.7);
+}
+
+.sf-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+}
+
+.sf-target {
+  position: absolute;
+  left: calc(50% + 40px);
+  top: calc(50% - 20px);
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding-left: 10px;
+  border-left: 2px solid #5fd4ff;
+}
+
+.sf-target.show {
+  opacity: 1;
+}
+
+.sf-target b {
+  display: block;
+  font-size: 16px;
+}
+
+.sf-target small {
+  display: block;
+  font-size: 12px;
+  color: rgba(230, 244, 255, 0.75);
+}
+
+.sf-target em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: #ffd27a;
+  letter-spacing: 0.1em;
+}
+
+.sf-gauges {
+  position: absolute;
+  left: 26px;
+  bottom: 40px;
+  width: 260px;
+}
+
+.sf-gauges .g {
+  margin-top: 8px;
+}
+
+.sf-gauges .g span {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.sf-gauges .g div {
+  height: 6px;
+  margin-top: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(230, 244, 255, 0.2);
+}
+
+.sf-gauges .g i {
+  display: block;
+  height: 100%;
+}
+
+.sf-gauges .hz i {
+  background: #ffd27a;
+}
+
+.sf-gauges .hp i {
+  background: #6dffb0;
+}
+
+.sf-gauges .jp i {
+  background: #5fd4ff;
+}
+
+.sf-gauges .warn span {
+  color: var(--warn);
+  animation: cb-blink 0.6s steps(2) infinite;
+}
+
+.sf-gauges .warn i {
+  background: var(--warn);
+}
+
+.sf-gauges .cargo {
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgba(230, 244, 255, 0.75);
+}
+
+.sf-tool {
+  position: absolute;
+  right: 30px;
+  bottom: 40px;
+  width: 230px;
+  text-align: right;
+}
+
+.sf-tool .tn {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sf-tool kbd,
+.sf-hint kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid rgba(230, 244, 255, 0.5);
+  padding: 0 4px;
+}
+
+.sf-tool .heat {
+  height: 5px;
+  margin: 6px 0 2px auto;
+  width: 180px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.sf-tool .heat i {
+  display: block;
+  height: 100%;
+  background: #ff8a3d;
+  margin-left: auto;
+}
+
+.sf-tool .heat.hot i {
+  background: var(--warn);
+}
+
+.sf-tool small {
+  font-size: 11px;
+  color: rgba(230, 244, 255, 0.65);
+}
+
+.sf-tool .pulse {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #5fd4ff;
+}
+
+.sf-prompt {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  background: rgba(4, 10, 18, 0.6);
+  border: 1px solid rgba(230, 244, 255, 0.3);
+  opacity: 0;
+}
+
+.sf-prompt.show {
+  opacity: 1;
+}
+
+.sf-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(230, 244, 255, 0.6);
+  white-space: nowrap;
+}
+
+.sf-fade {
+  position: fixed;
+  inset: 0;
+  background: #fff8ef;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.sf-entry {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 11;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(255, 120, 40, 0.75), transparent 55%),
+    radial-gradient(ellipse at center, transparent 45%, rgba(255, 90, 30, 0.55) 80%, rgba(255, 200, 120, 0.85) 100%);
+  mix-blend-mode: screen;
+}
+
+.in-codex {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.in-codex .cx {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-faint);
+  background: rgba(8, 20, 34, 0.6);
+}
+
+.in-codex .cx .ic {
+  font-size: 18px;
+  text-align: center;
+}
+
+.in-codex .cx small {
+  display: block;
+  color: var(--hud-dim);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.in-codex .cx p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #c5dbe6;
+}
+
+.in-codex .cx em {
+  font-style: normal;
+  font-family: var(--mono);
+  color: var(--ok);
+}
+
+.in-codex .cx.sold {
+  opacity: 0.5;
+}
+
+.in-codex .cx.sold em {
+  color: var(--hud-dim);
+}

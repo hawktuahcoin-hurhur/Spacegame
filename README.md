@@ -2,13 +2,14 @@
 
 A 3D space exploration & commerce sim in Three.js: No Man's Sky-style procedural exploration meets Starsector-style fleets, fitting and a living faction economy.
 
-See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–6 are playable:**
+See **[docs/SUPERPLAN.md](docs/SUPERPLAN.md)** for the full design and phased roadmap. **Phases 1–7 are playable:**
 - a procedural galaxy of about 670 star systems you can chart and jump between,
 - a fleet of procedurally built ships you can buy, refit and fly in formation,
 - real-time fleet battles against pirates, with a tactical command view, salvage and recovery,
 - a living economy of 685 markets with real NPC convoys,
 - six factions that trade, patrol, raid and go to war,
-- jobs, commissions, smuggling and an intel feed.
+- jobs, commissions, smuggling and an intel feed,
+- landing on planets to explore on foot, mine, scan wildlife, find ruins and wrecks, and sell discoveries as data.
 
 ## Run
 You need **Node.js 20.19+ or 22.12+**. Check with `node -v`, and get the LTS from [nodejs.org](https://nodejs.org) if yours is older.
@@ -50,7 +51,8 @@ URL options:
 | M | System map (click to select, **Set target**) |
 | N | Galaxy map (search, **Plot route**) |
 | R | Dock when near a station: market, bar (jobs & commissions), refit, shipyard, services |
-| I | Intel: news, your jobs, factions & standing, trade price intel |
+| I | Intel: news, your jobs, factions & standing, trade price intel, codex |
+| L | Land, when below ~7 km over a rocky planet or moon |
 | F | Fleet & refit screen (view-only until docked) |
 | C | Camera distance |
 | F5 / F9 | Quicksave / quickload |
@@ -99,6 +101,22 @@ Bigger fleets carry more fuel and cargo but burn more per jump, and they jump on
 - **Hold space.** Your hold is your fleet's total cargo capacity, shared with supplies. A Meridian or Atlas turns trading into real money.
 - **Flooding.** Big trades move prices against you. Run the same route over and over and it dries up; it recovers after a few weeks.
 - **Contraband.** Drugs, weapons and AI cores are illegal or restricted in much of the galaxy. They trade on the black market at a premium, at the risk of a customs bust. Patrols may scan you in supercruise: comply, bribe, or fight.
+
+**On a planet's surface:**
+
+| Key | Action |
+|---|---|
+| Mouse, WASD | Look and walk |
+| Shift | Sprint |
+| Space | Jump; hold in the air for the jetpack |
+| 1 | Mining beam: hold LMB on glowing deposits |
+| 2 | Analysis scanner: hold LMB on plants and animals |
+| F | Pulse scan: reveals ruins and wrecks on the compass |
+| E | Interact: translate glyphs, open crates, board your ship (takes off) |
+| I | Codex |
+
+- **Hazards.** Watch the hazard gauge: heat, cold, toxins, radiation and vacuum drain your suit. It recharges next to your ship.
+- **Selling data.** Scans, ruins and first landings are worth credits as exploration data at any station's **Services**. Tri-Corp pays best.
 
 **Factions, jobs and war:**
 - **Factions.** The Hegemony, Tri-Corp, the Free Trade League, the Ascendant Path, the Independents and the pirate clans each hold territory. The galaxy map shows it in their colours.
@@ -151,4 +169,5 @@ game.debug.spectate("Widow's Grin", [300, 150, 300])         // watch a combat s
 game.debug.campaign()                                        // day, owner here, wars, reputation, cargo, jobs
 game.debug.war('hegemony', 'ascendant'); game.debug.days(7)  // start a war, let a week pass
 game.debug.rep('league', 30); game.debug.cargo('drugs', 20); game.debug.hail()
+game.debug.land('Aizess Reach IV')                           // land straight away on a body
 ```
